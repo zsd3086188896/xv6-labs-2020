@@ -24,7 +24,7 @@ int main(int argc, char* argv[]){
         //读入父进程的字符
         char buf;
         read(pp2c[0], &buf, 1);
-        printf("%d:received ping\n", getpid());
+        printf("%d :received ping\n", getpid());
 
         //向父进程写入一个字符
         write(pc2p[1], &buf, 1);
