@@ -12,6 +12,7 @@ uint ticks;
 extern char trampoline[], uservec[], userret[];
 
 // in kernelvec.S, calls kerneltrap().
+//内核模式陷阱处理机制，处理在内核模式下发生的陷阱同样也需要保存上下文以便恢复
 void kernelvec();
 
 extern int devintr();
@@ -43,6 +44,9 @@ usertrap(void)
 
   // send interrupts and exceptions to kerneltrap(),
   // since we're now in the kernel.
+  //指定陷阱处理代码的入口地址，w_stvec用低两位来区分处理的陷阱类型，00所有陷阱跳转同一个地方，01为要判断陷阱来进行跳转
+  //为什么将陷阱入口设置为内核态，因为，在用户态处理陷阱时可能发生内核中断如时钟中断，此时要保证在内核态的陷阱
+  //处理下进行正确的处理，避免陷入用户态处理
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
