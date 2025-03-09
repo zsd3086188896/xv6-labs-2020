@@ -127,6 +127,7 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  p->syscall_trace = 0; //在创建新进程时将这个设置为0，避免产生随机值
   return p;
 }
 
@@ -297,6 +298,7 @@ fork(void)
 
   release(&np->lock);
 
+  np->syscall_trace = p->syscall_trace;//子进程继承父进程的syscall_trace
   return pid;
 }
 

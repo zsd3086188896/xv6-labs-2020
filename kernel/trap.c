@@ -39,6 +39,7 @@ usertrap(void)
 {
   int which_dev = 0;
 
+  //检查CPU状态确保这个陷阱来自用户态
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
 
@@ -52,9 +53,11 @@ usertrap(void)
   struct proc *p = myproc();
   
   // save user program counter.
+  //保存用户态计数器
   p->trapframe->epc = r_sepc();
   
-  if(r_scause() == 8){
+  //分辨那种类型的中断
+  if(r_scause() == 8){//系统中断
     // system call
 
     if(p->killed)
@@ -62,16 +65,17 @@ usertrap(void)
 
     // sepc points to the ecall instruction,
     // but we want to return to the next instruction.
+    //跳过ecall指令，指向下一条
     p->trapframe->epc += 4;
 
     // an interrupt will change sstatus &c registers,
     // so don't enable until done with those registers.
     intr_on();
 
-    syscall();
-  } else if((which_dev = devintr()) != 0){
+    syscall();//调用具体系统函数
+  } else if((which_dev = devintr()) != 0){//时钟中断
     // ok
-  } else {
+  } else {//异常缺页
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
@@ -89,7 +93,7 @@ usertrap(void)
 
 //
 // return to user space
-//
+// 返回用户态
 void
 usertrapret(void)
 {
