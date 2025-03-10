@@ -108,4 +108,5 @@ sys_trace(void){
 
   //初始化跟踪的系统调用
   myproc()->syscall_trace = mask;
+  return 0;
 }
