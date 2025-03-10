@@ -36,8 +36,9 @@ argraw(int n)
 {
   struct proc *p = myproc();
   switch (n) {
+    //1-5传递系统调用的参数
   case 0:
-    return p->trapframe->a0;
+    return p->trapframe->a0;//传递第一个参数，也就是命令处trace后的掩码值
   case 1:
     return p->trapframe->a1;
   case 2:
@@ -57,7 +58,7 @@ argraw(int n)
 int
 argint(int n, int *ip)
 {
-  *ip = argraw(n);
+  *ip = argraw(n);//获取系统调用号
   return 0;
 }
 
@@ -131,6 +132,32 @@ static uint64 (*syscalls[])(void) = {
 [SYS_trace]   sys_trace,
 };
 
+//自定义通过系统调用号查询对应系统调用名称
+const char *syscall_name[] = {
+[SYS_fork]    "fork",
+[SYS_exit]    "exit",
+[SYS_wait]    "wait",
+[SYS_pipe]    "pipe",
+[SYS_read]    "read",
+[SYS_kill]    "kill",
+[SYS_exec]    "exec",
+[SYS_fstat]   "fstat",
+[SYS_chdir]   "chdir",
+[SYS_dup]     "dup",
+[SYS_getpid]  "getpid",
+[SYS_sbrk]    "sbrk",
+[SYS_sleep]   "sleep",
+[SYS_uptime]  "uptime",
+[SYS_open]    "open",
+[SYS_write]   "write",
+[SYS_mknod]   "mknod",
+[SYS_unlink]  "unlink",
+[SYS_link]    "link",
+[SYS_mkdir]   "mkdir",
+[SYS_close]   "close",
+[SYS_trace]   "trace",
+};
+
 void
 syscall(void)
 {
@@ -142,7 +169,18 @@ syscall(void)
   num = p->trapframe->a7;
   //第一个第二个参数判断系统调用号是否合法，NELEM是个宏用来的出系统调用表的具体大小
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+    //此时a0存放的是系统调用的返回值
+    //syscalls[num]()调用与num对应的系统调用函数
     p->trapframe->a0 = syscalls[num]();
+    
+    //因为是跟踪系统调用则可以在调用syscall时就可以打印信息了
+    //如果当前进程开启了trace跟踪，则进行打印信息
+    //(p->syscall_trace>>num)&1，对传递进来的掩码值对当前系统调用号转为二进制进行右移并对1取与，所在位数为1表示当前系统调用启用的系统调用
+    //掩码值二进制的每一位都代表一个系统调用
+    if((p->syscall_trace>>num)&1){
+      printf("%d: syscall %s -> %d\n", p->pid, syscall_name[num], p->trapframe->a0);
+    }
+
   } else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);
