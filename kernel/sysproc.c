@@ -110,3 +110,24 @@ sys_trace(void){
   myproc()->syscall_trace = mask;
   return 0;
 }
+
+//添加sysinfo结构体头文件
+#include "sysinfo.h"
+#include "defs.h"
+//获取空闲内存以及已创建进程数量
+uint64
+sys_sysinfo(void){
+  struct sysinfo info;
+  freebytes(&info.freemem);//获取空闲内存
+  procnum(&info.nproc);//获取进程数量
+
+  //获取用户虚拟地址
+  uint64 dstaddr;
+  argaddr(0, &dstaddr);
+
+  //从内核拷贝到用户
+  if(copyout(myproc()->pagetable, dstaddr, (char*)&info, sizeof info)<0){
+    return -1;
+  }
+  return 0;
+}

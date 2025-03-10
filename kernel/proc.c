@@ -8,7 +8,7 @@
 
 struct cpu cpus[NCPU];
 
-struct proc proc[NPROC];
+struct proc proc[NPROC];//记录所有进程
 
 struct proc *initproc;
 
@@ -693,5 +693,16 @@ procdump(void)
       state = "???";
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
+  }
+}
+
+//统计正在运行进程的个数
+void procnum(uint64* count){
+  *count = 0;//初始为0
+  struct proc* p;
+  for(p = proc;p<&proc[NPROC];p++){
+    if(p->state!=UNUSED){
+      (*count)++;
+    }
   }
 }

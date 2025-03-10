@@ -20,7 +20,7 @@ struct run {
 
 struct {
   struct spinlock lock;
-  struct run *freelist;
+  struct run *freelist;//通过空闲链表来管理空闲内存
 } kmem;
 
 void
@@ -79,4 +79,17 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+void
+freebytes(uint64* dst){
+  *dst = 0;
+  struct run* p = kmem.freelist;
+
+  acquire(&kmem.lock);//获取锁保证线程安全
+  while(p){
+    *dst+=PGSIZE;//统计空闲字节数
+    p = p->next;
+  }
+  release(&kmem.lock);//释放锁
 }
