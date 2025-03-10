@@ -101,8 +101,10 @@ uint64
 sys_trace(void){
   int mask;
   
-  if(argint(0, &mask)<0)//判断系统调用号是否有效
+  if(argint(0, &mask)<0){//判断系统调用号是否有效
     return -1;
+  }    
+    
 
   //初始化跟踪的系统调用
   myproc()->syscall_trace = mask;
