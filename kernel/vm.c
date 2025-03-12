@@ -9,22 +9,28 @@
 /*
  * the kernel's page table.
  */
-pagetable_t kernel_pagetable;
+pagetable_t kernel_pagetable;//虚拟页表
 
-extern char etext[];  // kernel.ld sets this to end of kernel code.
+extern char etext[];  // kernel.ld sets this to end of kernel code.,标记内核代码段的末尾
 
 extern char trampoline[]; // trampoline.S
 
 /*
  * create a direct-map page table for the kernel.
+ * 在启动序列之前调用kvminit用于分配内核页表,直接引用物理内存
  */
 void
 kvminit()
 {
+  //取出一块物理内存，标记为0，表示当前内存可用
+  //将最高级的页目录分配内存
   kernel_pagetable = (pagetable_t) kalloc();
   memset(kernel_pagetable, 0, PGSIZE);
 
-  // uart registers
+  //将IO设备映射到内核内存中，与物理地址保持相同的位置
+  // uart registers                                     //IO设备#define UART0 0x10000000L
+  //对应到最低一级页目录
+  //PTE_R | PTE_W设置标志位
   kvmmap(UART0, UART0, PGSIZE, PTE_R | PTE_W);
 
   // virtio mmio disk interface
@@ -52,6 +58,8 @@ kvminit()
 void
 kvminithart()
 {
+  //设置satp寄存器的初始位置
+  //这条指令过后所有的内存地址都变成了虚拟内存地址
   w_satp(MAKE_SATP(kernel_pagetable));
   sfence_vma();
 }
@@ -68,6 +76,8 @@ kvminithart()
 //   21..29 -- 9 bits of level-1 index.
 //   12..20 -- 9 bits of level-0 index.
 //    0..11 -- 12 bits of byte offset within the page.
+
+//模拟MMU地址转换机制
 pte_t *
 walk(pagetable_t pagetable, uint64 va, int alloc)
 {
@@ -75,22 +85,29 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     panic("walk");
 
   for(int level = 2; level > 0; level--) {
-    pte_t *pte = &pagetable[PX(level, va)];
-    if(*pte & PTE_V) {
-      pagetable = (pagetable_t)PTE2PA(*pte);
+    pte_t *pte = &pagetable[PX(level, va)];//找到当前虚拟地址在页表中对应的页表项
+    if(*pte & PTE_V) {                    //如果当前位置有效
+      pagetable = (pagetable_t)PTE2PA(*pte);//将页表项转换成对应的物理地址
     } else {
+      //如果其中的一个页不存在，则进行分配
+      //如果不允许分配，并且从kalloc分配内存失败直接返回
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
+      //如果允许分配，将刚才得到的内存置为0
       memset(pagetable, 0, PGSIZE);
+      //将当前分配好的物理地址转换位页表项,并且设置标志位
       *pte = PA2PTE(pagetable) | PTE_V;
     }
   }
+  //返回第三级的PTE,也就是最终的到物理地址
+  //最终返回PTE
   return &pagetable[PX(0, va)];
 }
 
 // Look up a virtual address, return the physical address,
 // or 0 if not mapped.
 // Can only be used to look up user pages.
+//查找一个虚拟地址对应的物理地址
 uint64
 walkaddr(pagetable_t pagetable, uint64 va)
 {
@@ -114,6 +131,7 @@ walkaddr(pagetable_t pagetable, uint64 va)
 // add a mapping to the kernel page table.
 // only used when booting.
 // does not flush TLB or enable paging.
+//向内核页添加映射，只有在启动时使用
 void
 kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
 {
@@ -125,6 +143,7 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
 // a physical address. only needed for
 // addresses on the stack.
 // assumes va is page aligned.
+//虚拟地址转换物理地址，仅限于栈上内存转换
 uint64
 kvmpa(uint64 va)
 {
@@ -145,21 +164,26 @@ kvmpa(uint64 va)
 // physical addresses starting at pa. va and size might not
 // be page-aligned. Returns 0 on success, -1 if walk() couldn't
 // allocate a needed page-table page.
+//为从虚拟地址 va 开始的虚拟地址创建页表项（PTEs），这些页表项指向从物理地址 pa 开始的物理地址。
+//va 和 size 可能不是页对齐的。成功时返回 0，如果 walk() 无法分配所需的页表页，则返回 -1
+//用于物理地址映射到虚拟地址
 int
 mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 {
   uint64 a, last;
   pte_t *pte;
 
-  a = PGROUNDDOWN(va);
-  last = PGROUNDDOWN(va + size - 1);
+
+  a = PGROUNDDOWN(va);//映射到最近的页面边界，确保是从一个完整的页开始
+  last = PGROUNDDOWN(va + size - 1);//最后一个页的边界
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
     if(*pte & PTE_V)
       panic("remap");
+      //物理地址转换为PTE并设置有效位
     *pte = PA2PTE(pa) | perm | PTE_V;
-    if(a == last)
+    if(a == last)//相等说明全部映射完退出
       break;
     a += PGSIZE;
     pa += PGSIZE;
