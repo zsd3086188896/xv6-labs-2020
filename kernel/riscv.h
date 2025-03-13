@@ -348,7 +348,7 @@ sfence_vma()
 //(pte) >> 10,为什么要右移10位，因为整个PTE由10位的标志位，44位的PPN也就是物理页号,12位offset
 //因此要右移10位对齐到PPN之后再左移12位，因为物理地址是PPN乘以页的大小2^12的到物理地址
 #define PTE2PA(pte) (((pte) >> 10) << 12)
-
+//取出十位的标志位
 #define PTE_FLAGS(pte) ((pte) & 0x3FF)
  
 // extract the three 9-bit page table indices from a virtual address.
