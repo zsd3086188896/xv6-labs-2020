@@ -60,7 +60,11 @@ kvminithart()
 {
   //设置satp寄存器的初始位置
   //这条指令过后所有的内存地址都变成了虚拟内存地址
+  //将根页表的物理内存写入satp
+  //kernel_pagetable是内核页表的物理地址，MAKE_SATP将他转换成PPN号，再通过w_satp其中的一段
+  //汇编函数csrw satp, %0 ，将构造好的PPN传入satp寄存器
   w_satp(MAKE_SATP(kernel_pagetable));
+  //sfence.vma zero确保再切换进程后不会使用旧的TLB，同时使分页立即生效
   sfence_vma();
 }
 
@@ -200,16 +204,21 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   uint64 a;
   pte_t *pte;
 
+  //要移除的映射没有对齐页边界
   if((va % PGSIZE) != 0)
     panic("uvmunmap: not aligned");
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
+    //没有对应的物理内存映射
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
+    //有效位为0
     if((*pte & PTE_V) == 0)
       panic("uvmunmap: not mapped");
+    //PTE_FLAGS是屏蔽物理页号的位置，只剩下标志位
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
+    //允许进行释放，调用kfree回收空闲物理页，加入到空闲链表中
     if(do_free){
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
