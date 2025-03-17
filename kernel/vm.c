@@ -53,6 +53,11 @@ kvminit()
   kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 }
 
+//新建kvminit用于为每个进程的内核页表初始化
+//这个版本中应当创造一个新的页表而不是修改kernel_pagetable
+void kvminit_ker(){
+
+}
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
 void
