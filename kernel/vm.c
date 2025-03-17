@@ -341,8 +341,8 @@ freewalk(pagetable_t pagetable)
 }
 
 //打印页表
-void
-print_page(pagetable_t pagetable, uint64 depth){
+int
+print_page(pagetable_t pagetable, int depth){
   for(int i = 0;i<512;i++){
     pte_t pte = pagetable[i];
     if((pte&PTE_V)){
@@ -364,7 +364,7 @@ print_page(pagetable_t pagetable, uint64 depth){
 
 int vmprint(pagetable_t pagetable){
   printf("page table%d", pagetable);
-  print_page(pagetable, 0);
+  return print_page(pagetable, 0);
 }
 // Free user memory pages,
 // then free page-table pages.
