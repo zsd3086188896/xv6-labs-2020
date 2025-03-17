@@ -420,6 +420,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)//将从内�
 {
   uint64 n, va0, pa0;
 
+  //用循环解决了跨页的情况
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);//计算当前页的起始虚拟地址
     pa0 = walkaddr(pagetable, va0);//找到对应的物理地址
@@ -428,6 +429,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)//将从内�
     n = PGSIZE - (dstva - va0);//计算需要赋值的字节数
     if(n > len)
       n = len;
+    //用户地址的虚拟空间就是物理地址加上页内偏移
     memmove((void *)(pa0 + (dstva - va0)), src, n);
 
     len -= n;
@@ -440,6 +442,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)//将从内�
 // Copy from user to kernel.
 // Copy len bytes to dst from virtual address srcva in a given page table.
 // Return 0 on success, -1 on error.
+//将用户空间虚拟地址srcva复制len个字节到内核空间dst指针指向的位置
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
@@ -450,14 +453,14 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
-    n = PGSIZE - (srcva - va0);
+    n = PGSIZE - (srcva - va0);//计算需要赋值的字节数
     if(n > len)
       n = len;
     memmove(dst, (void *)(pa0 + (srcva - va0)), n);
 
     len -= n;
     dst += n;
-    srcva = va0 + PGSIZE;
+    srcva = va0 + PGSIZE;//下一轮循环处理下一个页面
   }
   return 0;
 }
@@ -466,6 +469,9 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 // Copy bytes to dst from virtual address srcva in a given page table,
 // until a '\0', or max.
 // Return 0 on success, -1 on error.
+//将一个以 \0 结尾的字符串从用户空间拷贝到内核空间。
+//从给定页表中的虚拟地址 srcva 开始，将字节拷贝到内核的 dst 中，直到遇到 \0 或者达到最大长度 max。
+//成功时返回 0，失败时返回 -1。
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
