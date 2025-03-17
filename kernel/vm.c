@@ -327,7 +327,7 @@ freewalk(pagetable_t pagetable)
   for(int i = 0; i < 512; i++){
     pte_t pte = pagetable[i]; 
     //(pte & (PTE_R|PTE_W|PTE_X)) == 0，如果这些标志位没有被设置，表示这个pte指向下一级页表，只有有效位有效且存在权限位
-    //说明是一个叶子节点,需要递归继续向下查找
+    //说明不是一个叶子节点,需要递归继续向下查找
     if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
       // this PTE points to a lower-level page table.
       uint64 child = PTE2PA(pte);
@@ -340,6 +340,32 @@ freewalk(pagetable_t pagetable)
   kfree((void*)pagetable);
 }
 
+//打印页表
+void
+print_page(pagetable_t pagetable, uint64 depth){
+  for(int i = 0;i<512;i++){
+    pte_t pte = pagetable[i];
+    if((pte&PTE_V)){
+      printf("..");
+      for(int j = 0;j<depth;j++){
+        printf("..");
+      }
+      printf("%d：pte %p pa %p", i, pte, PTE2PA(pte));
+      //递归遍历查找下一级页表
+      if((pte&(PTE_R|PTE_W|PTE_X))==0){
+        uint64 child = PTE2PA(pte);//转换成物理地址
+        print_page((pagetable_t)child, depth+1);
+      }
+    }
+    
+  }
+  return 0;
+}
+
+int vmprint(pagetable_t pagetable){
+  printf("page table%d", pagetable);
+  print_page(pagetable, 0);
+}
 // Free user memory pages,
 // then free page-table pages.
 //释放用户内存页面,
