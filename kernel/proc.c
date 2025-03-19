@@ -32,15 +32,22 @@ procinit(void)
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
 
-      // Allocate a page for the process's kernel stack.
-      // Map it high in memory, followed by an invalid
-      // guard page.
-      char *pa = kalloc();
-      if(pa == 0)
-        panic("kalloc");
-      uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
+      //为所有进程分配内核栈，改为创建进程时在分配
+      //将分配内核栈的工作放到allocproc中
+      // // Allocate a page for the process's kernel stack.
+      // // Map it high in memory, followed by an invalid
+      // // guard page.
+      // //为进程的内核栈分配页面
+      // // 将其映射到内存的高地址区域，并在其后跟随一个无效的
+      // // 保护页面。
+      // char *pa = kalloc();
+      // if(pa == 0)
+      //   panic("kalloc");
+      //   //(p - proc)计算当前进程在数组中的索引
+      //   //计算当前进程的内核栈的虚拟地址
+      // uint64 va = KSTACK((int) (p - proc));
+      // kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+      // p->kstack = va;
   }
   kvminithart();
 }
@@ -115,12 +122,28 @@ found:
   }
 
   // An empty user page table.
+  //分配用户页表
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
     freeproc(p);
     release(&p->lock);
     return 0;
   }
+
+  //创建内核页表
+  p->pagetable_kernel = kvminit_ker();
+
+  //将专属的内核栈固定到内核页表
+  char *pa = kalloc();
+  if(pa == 0)
+  panic("kalloc");
+  //(p - proc)计算当前进程在数组中的索引
+  //计算当前进程的内核栈的虚拟地址
+  uint64 va = KSTACK((int) (p - proc));
+  kvmmap(p->pagetable_kernel, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  p->kstack = va;
+
+
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -155,6 +178,7 @@ freeproc(struct proc *p)
 
 // Create a user page table for a given process,
 // with no user memory, but with trampoline pages.
+//创建用户页表
 pagetable_t
 proc_pagetable(struct proc *p)
 {
@@ -454,6 +478,12 @@ wait(uint64 addr)
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
+//每个 CPU 的进程调度器。
+// 每个 CPU 在初始化完成后都会调用 scheduler()。
+// 调度器永远不会返回。它会循环执行以下操作：
+//  - 选择一个进程来运行。
+//  - 通过 swtch 切换到该进程并开始运行。
+//  - 最终，该进程会通过 swtch 将控制权交还给调度器。
 void
 scheduler(void)
 {
@@ -466,14 +496,26 @@ scheduler(void)
     intr_on();
     
     int found = 0;
+    //选择一个进程运行
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
+      //当前进程处于就绪态
       if(p->state == RUNNABLE) {
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+
+        //将内核页表加载到satp寄存器中
+        //切换到进程独立的内核页表
+        w_satp(MAKE_SATP(p->pagetable_kernel));
+        //切换缓存，防止进程访问旧的缓存 
+        sfence_vma();
+
+        //切换回全局内核页表
+        kvminithart();
+        //切换上下文
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
@@ -481,6 +523,8 @@ scheduler(void)
         c->proc = 0;
 
         found = 1;
+
+        
       }
       release(&p->lock);
     }

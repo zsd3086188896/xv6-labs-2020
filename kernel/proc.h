@@ -1,9 +1,12 @@
 // Saved registers for kernel context switches.
+//用于保存CPU上下文信息
+//当调度器切换到另一个进程时，会保存当前 CPU 的上下文到 context 中，并加载目标进程的上下文。  
 struct context {
-  uint64 ra;
-  uint64 sp;
+  uint64 ra;//指示 CPU 在切换回来后继续执行的地址
+  uint64 sp;//保存当前栈的地址，确保切换回来后栈的正确性
 
   // callee-saved
+  //保存 CPU 的通用寄存器，确保切换回来后寄存器的值不变
   uint64 s0;
   uint64 s1;
   uint64 s2;

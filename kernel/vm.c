@@ -19,44 +19,88 @@ extern char trampoline[]; // trampoline.S
  * create a direct-map page table for the kernel.
  * 在启动序列之前调用kvminit用于分配内核页表,直接引用物理内存
  */
-void
-kvminit()
-{
-  //取出一块物理内存，标记为0，表示当前内存可用
-  //将最高级的页目录分配内存
-  kernel_pagetable = (pagetable_t) kalloc();
-  memset(kernel_pagetable, 0, PGSIZE);
+// void
+// kvminit()
+// {
+//   //取出一块物理内存，标记为0，表示当前内存可用
+//   //将最高级的页目录分配内存
+//   kernel_pagetable = (pagetable_t) kalloc();
+//   memset(kernel_pagetable, 0, PGSIZE);
 
-  //将IO设备映射到内核内存中，与物理地址保持相同的位置
+//   //将IO设备映射到内核内存中，与物理地址保持相同的位置
+//   // uart registers                                     //IO设备#define UART0 0x10000000L
+//   //对应到最低一级页目录
+//   //PTE_R | PTE_W设置标志位
+//   kvmmap(UART0, UART0, PGSIZE, PTE_R | PTE_W);
+
+//   // virtio mmio disk interface
+//   kvmmap(VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+
+//   // CLINT
+//   kvmmap(CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+
+//   // PLIC
+//   kvmmap(PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+
+//   // map kernel text executable and read-only.
+//   kvmmap(KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+
+//   // map kernel data and the physical RAM we'll make use of.
+//   kvmmap((uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+
+//   // map the trampoline for trap entry/exit to
+//   // the highest virtual address in the kernel.
+//   kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+// }
+
+/*
+ * create a direct-map page table for the kernel.
+ * 在启动序列之前调用kvminit用于分配内核页表,直接引用物理内存
+ */
+void 
+kvminit(){
+  kernel_pagetable = kvminit_ker();
+}
+//新建kvminit用于为每个进程的内核页表初始化
+//这个版本中应当创造一个新的页表而不是修改kernel_pagetable
+pagetable_t 
+kvminit_ker(){
+  //创建一个新页表
+  pagetable_t pgtble = (pagetable_t) kalloc();
+  memset(pgtble, 0, PGSIZE);
+
+  kvm_map_pagetable(pgtble);
+
+  return pgtble;
+}
+
+//初始化页表映射函数
+void
+kvm_map_pagetable(pagetable_t pgtbl){
+    //将IO设备映射到内核内存中，与物理地址保持相同的位置
   // uart registers                                     //IO设备#define UART0 0x10000000L
   //对应到最低一级页目录
   //PTE_R | PTE_W设置标志位
-  kvmmap(UART0, UART0, PGSIZE, PTE_R | PTE_W);
+  kvmmap(pgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
 
   // virtio mmio disk interface
-  kvmmap(VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+  kvmmap(pgtbl, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
 
   // CLINT
-  kvmmap(CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  kvmmap(pgtbl,CLINT, CLINT, 0x10000, PTE_R | PTE_W);
 
   // PLIC
-  kvmmap(PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+  kvmmap(pgtbl,PLIC, PLIC, 0x400000, PTE_R | PTE_W);
 
   // map kernel text executable and read-only.
-  kvmmap(KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+  kvmmap(pgtbl,KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
 
   // map kernel data and the physical RAM we'll make use of.
-  kvmmap((uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+  kvmmap(pgtbl,(uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
 
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
-  kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
-}
-
-//新建kvminit用于为每个进程的内核页表初始化
-//这个版本中应当创造一个新的页表而不是修改kernel_pagetable
-void kvminit_ker(){
-
+  kvmmap(pgtbl,TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 }
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
@@ -142,9 +186,9 @@ walkaddr(pagetable_t pagetable, uint64 va)
 // does not flush TLB or enable paging.
 //向内核页添加映射，只有在启动时使用
 void
-kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
+kvmmap(pagetable_t pagetable, uint64 va, uint64 pa, uint64 sz, int perm)
 {
-  if(mappages(kernel_pagetable, va, sz, pa, perm) != 0)
+  if(mappages(pagetable, va, sz, pa, perm) != 0)
     panic("kvmmap");
 }
 
@@ -154,13 +198,13 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
 // assumes va is page aligned.
 //虚拟地址转换物理地址，仅限于栈上内存转换
 uint64
-kvmpa(uint64 va)
+kvmpa(pagetable_t pagetable, uint64 va)
 {
   uint64 off = va % PGSIZE;
   pte_t *pte;
   uint64 pa;
   
-  pte = walk(kernel_pagetable, va, 0);
+  pte = walk(pagetable, va, 0);
   if(pte == 0)
     panic("kvmpa");
   if((*pte & PTE_V) == 0)
