@@ -50,10 +50,15 @@
 
 // map the trampoline page to the highest address,
 // in both user and kernel space.
+//将 trampoline 页面映射到最高地址，
+// 在用户空间和内核空间中均如此。
 #define TRAMPOLINE (MAXVA - PGSIZE)
 
 // map kernel stacks beneath the trampoline,
 // each surrounded by invalid guard pages.
+//根据索引计算内核栈的虚拟地址
+//每个进程的内核栈占两个页的大小，一个是内核栈，另一个是保护页的大小，因此是两个页
+//TRAMPOLINE在虚拟地址的最高处，因此向下减，索引加1在乘上两个页的大小
 #define KSTACK(p) (TRAMPOLINE - ((p)+1)* 2*PGSIZE)
 
 // User memory layout.
