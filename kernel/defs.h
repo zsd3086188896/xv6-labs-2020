@@ -172,6 +172,8 @@ int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 int             vmprint(pagetable_t pagetable);
+pagetable_t     kvminit_ker();      //创建页表并初始化
+void            kvm_map_pagetable(pagetable_t); //初始化页表映射函数
 // plic.c
 void            plicinit(void);
 void            plicinithart(void);

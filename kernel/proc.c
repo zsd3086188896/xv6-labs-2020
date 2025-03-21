@@ -137,9 +137,8 @@ found:
   char *pa = kalloc();
   if(pa == 0)
   panic("kalloc");
-  //(p - proc)计算当前进程在数组中的索引
-  //计算当前进程的内核栈的虚拟地址
-  uint64 va = KSTACK((int) (p - proc));
+  //将内核栈映射在固定的地址上
+  uint64 va = KSTACK((int)0);
   kvmmap(p->pagetable_kernel, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   p->kstack = va;
 
@@ -157,6 +156,7 @@ found:
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
+//进程结束时要对资源进行释放
 static void
 freeproc(struct proc *p)
 {
@@ -173,6 +173,17 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+
+  //释放进程的内核栈
+  void *kstack_pa = (void*)kvmpa(p->pagetable_kernel, p->kstack);
+  kfree(kstack_pa);
+  p->kstack = 0;
+
+  //释放进程页表
+  kvm_free_kernelpgtbl(p->pagetable_kernel);
+  p->pagetable_kernel = 0;
+
+  
   p->state = UNUSED;
 }
 
@@ -212,6 +223,7 @@ proc_pagetable(struct proc *p)
 
 // Free a process's page table, and free the
 // physical memory it refers to.
+//释放进程的页表，并释放其引用的物理内存。
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
@@ -512,12 +524,11 @@ scheduler(void)
         w_satp(MAKE_SATP(p->pagetable_kernel));
         //切换缓存，防止进程访问旧的缓存 
         sfence_vma();
-
-        //切换回全局内核页表
-        kvminithart();
         //切换上下文
         swtch(&c->context, &p->context);
 
+        //切换回全局内核页表
+        kvminithart();
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;

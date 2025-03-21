@@ -102,6 +102,19 @@ kvm_map_pagetable(pagetable_t pgtbl){
   // the highest virtual address in the kernel.
   kvmmap(pgtbl,TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 }
+
+//递归释放内核页面
+void kvm_free_kernelpgtbl(pagetable_t pgtbl){
+    for(int i = 0;i<512;i++){
+      pte_t pte = pgtbl[i];
+      uint64 child = PTE2PA(pte);
+      if((pte&PTE_V)&&(pte&(PTE_R|PTE_W|PTE_X))==0){//该页表项指向更低一级页表
+        kvm_free_kernelpgtbl((pagetable_t)child); //递归释放低一级页表及其页表项
+        pgtbl[i] = 0;
+      }
+    }
+    kfree((void*)pgtbl);
+}
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
 void
