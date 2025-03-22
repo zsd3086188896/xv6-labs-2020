@@ -108,18 +108,7 @@ kvm_map_pagetable(pagetable_t pgtbl){
 
 }
 
-//递归释放内核页面
-void kvm_free_kernelpgtbl(pagetable_t pgtbl){
-    for(int i = 0;i<512;i++){
-      pte_t pte = pgtbl[i];
-      uint64 child = PTE2PA(pte);
-      if((pte&PTE_V)&&(pte&(PTE_W|PTE_X|PTE_U))==0){
-        kvm_free_kernelpgtbl((pagetable_t)child);
-        pgtbl[i] = 0;
-      }
-    }
-    kfree((void*)pgtbl);
-}
+
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
 
@@ -579,7 +568,8 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)//将从内�
   return 0;
 }
 
-
+extern int copyin_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len);
+extern int copyinstr_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max);
 // Copy from user to kernel.
 // Copy len bytes to dst from virtual address srcva in a given page table.
 // Return 0 on success, -1 on error.
@@ -652,4 +642,17 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 //     return -1;
 //   }
   return copyinstr_new(pagetable, dst, srcva, max);
+}
+
+//递归释放内核页面
+void kvm_free_kernelpgtbl(pagetable_t pgtbl){
+  for(int i = 0;i<512;i++){
+    pte_t pte = pgtbl[i];
+    uint64 child = PTE2PA(pte);
+    if((pte&PTE_V)&&(pte&(PTE_W|PTE_X|PTE_U))==0){
+      kvm_free_kernelpgtbl((pagetable_t)child);
+      pgtbl[i] = 0;
+    }
+  }
+  kfree((void*)pgtbl);
 }
