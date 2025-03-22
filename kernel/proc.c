@@ -143,7 +143,6 @@ found:
   p->kstack = va;
 
 
-
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -183,7 +182,7 @@ freeproc(struct proc *p)
   kvm_free_kernelpgtbl(p->pagetable_kernel);
   p->pagetable_kernel = 0;
 
-  
+
   p->state = UNUSED;
 }
 
@@ -258,6 +257,8 @@ userinit(void)
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
 
+  //同步程序内存映射到内核页表中
+  kvmcopymappings(p->pagetable, p->pagetable_kernel, 0, p->sz);
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
   p->trapframe->sp = PGSIZE;  // user stack pointer
@@ -280,11 +281,18 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
-    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+    uint64 newsz;//扩展新空间的大小
+    if((newsz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
+    }
+    //内核页表中的内存同步扩大
+    if(kvmcopymappings(p->pagetable, p->pagetable_kernel, sz, n)!=0){
+      uvmdealloc(p->pagetable, newsz, sz);
     }
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+    //内存页表同时缩小
+    sz = kvmdealloc(p->pagetable_kernel, sz, sz+n);
   }
   p->sz = sz;
   return 0;
@@ -305,7 +313,8 @@ fork(void)
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0||
+     kvmcopymappings(np->pagetable, np->pagetable_kernel, 0, p->sz)<0){
     freeproc(np);
     release(&np->lock);
     return -1;
