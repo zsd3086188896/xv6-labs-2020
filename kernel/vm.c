@@ -122,6 +122,59 @@ void kvm_free_kernelpgtbl(pagetable_t pgtbl){
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
 
+void
+kvminithart()
+{
+  //设置satp寄存器的初始位置
+  //这条指令过后所有的内存地址都变成了虚拟内存地址
+  //将根页表的物理内存写入satp
+  //kernel_pagetable是内核页表的物理地址，MAKE_SATP将他转换成PPN号，再通过w_satp其中的一段
+  //汇编函数csrw satp, %0 ，将构造好的PPN传入satp寄存器
+  w_satp(MAKE_SATP(kernel_pagetable));
+  //sfence.vma zero确保再切换进程后不会使用旧的TLB，同时使分页立即生效
+  sfence_vma();
+}
+
+// Return the address of the PTE in page table pagetable
+// that corresponds to virtual address va.  If alloc!=0,
+// create any required page-table pages.
+//
+// The risc-v Sv39 scheme has three levels of page-table
+// pages. A page-table page contains 512 64-bit PTEs.
+// A 64-bit virtual address is split into five fields:
+//   39..63 -- must be zero.
+//   30..38 -- 9 bits of level-2 index.
+//   21..29 -- 9 bits of level-1 index.
+//   12..20 -- 9 bits of level-0 index.
+//    0..11 -- 12 bits of byte offset within the page.
+
+//模拟MMU地址转换机制
+pte_t*
+walk(pagetable_t pagetable, uint64 va, int alloc)
+{
+  if(va >= MAXVA)
+    panic("walk");
+
+  for(int level = 2; level > 0; level--) {
+    pte_t *pte = &pagetable[PX(level, va)];//找到当前虚拟地址在页表中对应的页表项
+    if(*pte & PTE_V) {                    //如果当前位置有效
+      pagetable = (pagetable_t)PTE2PA(*pte);//将页表项转换成对应的物理地址
+    } else {
+      //如果其中的一个页不存在，则进行分配
+      //如果不允许分配，并且从kalloc分配内存失败直接返回
+      if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
+        return 0;
+      //如果允许分配，将刚才得到的内存置为0
+      memset(pagetable, 0, PGSIZE);
+      //将当前分配好的物理地址转换位页表项,并且设置标志位
+      *pte = PA2PTE(pagetable) | PTE_V;
+    }
+  }
+  //返回第三级的PTE,也就是最终的到物理地址
+  //最终返回PTE
+  return &pagetable[PX(0, va)];
+}
+
 //将用户页表拷贝到内核页表中
 int 
 kvmcopymappings(pagetable_t src, pagetable_t dst, uint64 start, uint64 sz){
@@ -152,7 +205,7 @@ kvmcopymappings(pagetable_t src, pagetable_t dst, uint64 start, uint64 sz){
 
 err:
   //解除目标页表中已经映射的页表项
-  uvmunmap(dst, PGROUNDUO(start), (i-PGROUNDUP(start))/PGSIZE, 0);
+  uvmunmap(dst, PGROUNDUP(start), (i-PGROUNDUP(start))/PGSIZE, 0);
   return -1;
 }
 
@@ -169,59 +222,6 @@ kvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz){
 
   return newsz;
 }
-void
-kvminithart()
-{
-  //设置satp寄存器的初始位置
-  //这条指令过后所有的内存地址都变成了虚拟内存地址
-  //将根页表的物理内存写入satp
-  //kernel_pagetable是内核页表的物理地址，MAKE_SATP将他转换成PPN号，再通过w_satp其中的一段
-  //汇编函数csrw satp, %0 ，将构造好的PPN传入satp寄存器
-  w_satp(MAKE_SATP(kernel_pagetable));
-  //sfence.vma zero确保再切换进程后不会使用旧的TLB，同时使分页立即生效
-  sfence_vma();
-}
-
-// Return the address of the PTE in page table pagetable
-// that corresponds to virtual address va.  If alloc!=0,
-// create any required page-table pages.
-//
-// The risc-v Sv39 scheme has three levels of page-table
-// pages. A page-table page contains 512 64-bit PTEs.
-// A 64-bit virtual address is split into five fields:
-//   39..63 -- must be zero.
-//   30..38 -- 9 bits of level-2 index.
-//   21..29 -- 9 bits of level-1 index.
-//   12..20 -- 9 bits of level-0 index.
-//    0..11 -- 12 bits of byte offset within the page.
-
-//模拟MMU地址转换机制
-pte_t *
-walk(pagetable_t pagetable, uint64 va, int alloc)
-{
-  if(va >= MAXVA)
-    panic("walk");
-
-  for(int level = 2; level > 0; level--) {
-    pte_t *pte = &pagetable[PX(level, va)];//找到当前虚拟地址在页表中对应的页表项
-    if(*pte & PTE_V) {                    //如果当前位置有效
-      pagetable = (pagetable_t)PTE2PA(*pte);//将页表项转换成对应的物理地址
-    } else {
-      //如果其中的一个页不存在，则进行分配
-      //如果不允许分配，并且从kalloc分配内存失败直接返回
-      if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
-        return 0;
-      //如果允许分配，将刚才得到的内存置为0
-      memset(pagetable, 0, PGSIZE);
-      //将当前分配好的物理地址转换位页表项,并且设置标志位
-      *pte = PA2PTE(pagetable) | PTE_V;
-    }
-  }
-  //返回第三级的PTE,也就是最终的到物理地址
-  //最终返回PTE
-  return &pagetable[PX(0, va)];
-}
-
 // Look up a virtual address, return the physical address,
 // or 0 if not mapped.
 // Can only be used to look up user pages.
@@ -578,6 +578,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)//将从内�
   return 0;
 }
 
+#include "kernel/vmcopyin.c"
 // Copy from user to kernel.
 // Copy len bytes to dst from virtual address srcva in a given page table.
 // Return 0 on success, -1 on error.
