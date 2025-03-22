@@ -5,7 +5,7 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
-#include "vmcopyin.c"
+//#include "vmcopyin.c"
 
 /*
  * the kernel's page table.
