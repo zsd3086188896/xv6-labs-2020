@@ -174,7 +174,7 @@ int             copyinstr(pagetable_t, char *, uint64, uint64);
 int             vmprint(pagetable_t pagetable);
 pagetable_t     kvminit_ker();      //创建页表并初始化
 void            kvm_map_pagetable(pagetable_t); //初始化页表映射函数
-void            kvm_free_pagetable(pagetable_t);//递归释放内核页表
+void            kvm_free_kernelpgtbl(pagetable_t);//递归释放内核页表
 int             kvmcopymappings(pagetable_t , pagetable_t , uint64 , uint64 );//用户页表拷贝到内核页表
 uint64          kvmdealloc(pagetable_t , uint64 , uint64 );//缩减内存大小
 // plic.c
