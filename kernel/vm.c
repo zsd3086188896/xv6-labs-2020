@@ -568,6 +568,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)//将从内�
   return 0;
 }
 
+
 extern int copyin_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len);
 extern int copyinstr_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max);
 // Copy from user to kernel.
