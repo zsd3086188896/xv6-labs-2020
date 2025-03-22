@@ -5,6 +5,7 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "vmcopyin.c"
 
 /*
  * the kernel's page table.
@@ -578,7 +579,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)//将从内�
   return 0;
 }
 
-#include "kernel/vmcopyin.c"
+
 // Copy from user to kernel.
 // Copy len bytes to dst from virtual address srcva in a given page table.
 // Return 0 on success, -1 on error.
