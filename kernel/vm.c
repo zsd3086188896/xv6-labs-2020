@@ -108,8 +108,8 @@ void kvm_free_kernelpgtbl(pagetable_t pgtbl){
     for(int i = 0;i<512;i++){
       pte_t pte = pgtbl[i];
       uint64 child = PTE2PA(pte);
-      if((pte&PTE_V)&&(pte&(PTE_R|PTE_W|PTE_X))==0){//该页表项指向更低一级页表
-        kvm_free_kernelpgtbl((pagetable_t)child); //递归释放低一级页表及其页表项
+      if((pte&PTE_V)&&(pte&(PTE_W|PTE_X|PTE_U))==0){
+        kvm_free_kernelpgtbl((pagetable_t)child);
         pgtbl[i] = 0;
       }
     }
