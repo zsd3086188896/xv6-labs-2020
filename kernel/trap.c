@@ -23,6 +23,7 @@ trapinit(void)
 }
 
 // set up to take exceptions and traps while in the kernel.
+// 设置stvec寄存器指向陷阱入口
 void
 trapinithart(void)
 {
@@ -43,14 +44,16 @@ usertrap(void)
 
   // send interrupts and exceptions to kerneltrap(),
   // since we're now in the kernel.
+  //设置stvec寄存器设为指向处理内核陷阱的入口
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
   
   // save user program counter.
+  //保存程序寄存器
   p->trapframe->epc = r_sepc();
   
-  if(r_scause() == 8){
+  if(r_scause() == 8){//如果陷阱来自系统调用，就会触发syscall去处理
     // system call
 
     if(p->killed)
@@ -58,14 +61,17 @@ usertrap(void)
 
     // sepc points to the ecall instruction,
     // but we want to return to the next instruction.
+    // 当前计数器保存的是ecall指令的地址，但我们要跳过这条指令执行下一条指令因此加四个字节
+    //返回后我们要执行下一条指令，否则会陷入死循环
     p->trapframe->epc += 4;
 
     // an interrupt will change sstatus &c registers,
     // so don't enable until done with those registers.
+    //中断会修改 sstatus 等寄存器，因此在完成对这些寄存器的操作前不要启用中断
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  } else if((which_dev = devintr()) != 0){//是否是外部中断或者软件中断，调用共devintr处理
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -77,9 +83,11 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
+  //时间片到了就让出CPU
   if(which_dev == 2)
     yield();
 
+    //调用该函数用于恢复上下文,设置stevc
   usertrapret();
 }
 
@@ -94,9 +102,14 @@ usertrapret(void)
   // we're about to switch the destination of traps from
   // kerneltrap() to usertrap(), so turn off interrupts until
   // we're back in user space, where usertrap() is correct.
+  //我们即将将陷阱的处理目标从 kerneltrap() 切换到 usertrap()，
+  //因此在返回到用户空间之前需要禁用中断，因为只有回到用户空间后 usertrap() 才是正确的处理入口。
   intr_off();
 
   // send syscalls, interrupts, and exceptions to trampoline.S
+  //设置用户态陷阱处理入口
+  //TRAMPOLINE在用户和内核页表映射到相同的物理页
+  //(uservec - trampoline)计算页内偏移量+TRAMPOLINE基址
   w_stvec(TRAMPOLINE + (uservec - trampoline));
 
   // set up trapframe values that uservec will need when
@@ -173,6 +186,11 @@ clockintr()
 // returns 2 if timer interrupt,
 // 1 if other device,
 // 0 if not recognized.
+//检查是否为外部中断或软件中断，并处理它。
+// 返回：
+// ​2 表示定时器中断，
+// ​1 表示其他设备中断，
+// ​0 表示未识别的中断类型。
 int
 devintr()
 {

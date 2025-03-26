@@ -14,7 +14,7 @@ trampoline:
 .align 4
 .globl uservec
 uservec:    
-	#
+	# 处理所有来自用户空间的陷阱,仍然使用用户页表
         # trap.c sets stvec to point here, so
         # traps from user space start here,
         # in supervisor mode, but with a
@@ -26,9 +26,11 @@ uservec:
         
 	# swap a0 and sscratch
         # so that a0 is TRAPFRAME
+        # 交换a0和sscratch的值，a0指向陷阱帧（用于保存用户陷入内核时的上下文），sscratch保存了a0寄存器的值
         csrrw a0, sscratch, a0
 
         # save the user registers in TRAPFRAME
+        # 保存所有用户寄存器的值
         sd ra, 40(a0)
         sd sp, 48(a0)
         sd gp, 56(a0)
@@ -71,9 +73,12 @@ uservec:
         ld tp, 32(a0)
 
         # load the address of usertrap(), p->trapframe->kernel_trap
+        # t0寄存器中现在保存的时usertrap函数的地址
+        # a0指向的地址偏移16位
         ld t0, 16(a0)
 
         # restore kernel page table from p->trapframe->kernel_satp
+        # 读取内核页表，并写入satp寄存器
         ld t1, 0(a0)
         csrw satp, t1
         sfence.vma zero, zero
@@ -82,6 +87,7 @@ uservec:
         # table does not specially map p->tf.
 
         # jump to usertrap(), which does not return
+        # 调用usertrap函数在kernel/trap.c
         jr t0
 
 .globl userret
@@ -93,15 +99,18 @@ userret:
         # a1: user page table, for satp.
 
         # switch to the user page table.
+        # 切换到用户页表
         csrw satp, a1
         sfence.vma zero, zero
 
         # put the saved user a0 in sscratch, so we
         # can swap it with our a0 (TRAPFRAME) in the last step.
+        # 将t0设置为用户页表的地址，并交给sscratch
         ld t0, 112(a0)
         csrw sscratch, t0
 
         # restore all but a0 from TRAPFRAME
+        # 恢复原来寄存器的值
         ld ra, 40(a0)
         ld sp, 48(a0)
         ld gp, 56(a0)
@@ -134,8 +143,10 @@ userret:
         ld t6, 280(a0)
 
 	# restore user a0, and save TRAPFRAME in sscratch
+        # 恢复a0原来的值
         csrrw a0, sscratch, a0
         
         # return to user mode and user pc.
         # usertrapret() set up sstatus and sepc.
+        # 返回用户空间
         sret

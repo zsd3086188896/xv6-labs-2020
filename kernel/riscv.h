@@ -258,6 +258,8 @@ r_time()
 }
 
 // enable device interrupts
+//启用中断
+//通过修改sstatus寄存器来是否允许中断
 static inline void
 intr_on()
 {
@@ -265,6 +267,7 @@ intr_on()
 }
 
 // disable device interrupts
+//禁用中断
 static inline void
 intr_off()
 {
