@@ -132,3 +132,15 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+//实现backtrace函数打印调用过的函数的地址
+void backtrace(){
+  uint64 fp = r_fp();//获取栈指针
+  printf("backtrace:\n");
+  //因为使用一个页来存储栈
+  while(PGROUNDDOWN(fp)!=PGROUNDUP(fp)){  //判断当前的栈指针是否在有效的页面范围内
+    uint64 ra = *(uint64*)(fp-8);//return address，栈指针指向一个栈的起始地址，因为栈是从高到低生长，第一个八字节就是当前调用层应该返回的地址
+    printf("%p\n", ra);//打印地址
+    fp = *(uint64*)(fp-16);//第二个字节是指向上一个栈帧的fp开始的地址
+  }
+}

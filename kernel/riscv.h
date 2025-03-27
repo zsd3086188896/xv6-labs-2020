@@ -355,3 +355,12 @@ sfence_vma()
 
 typedef uint64 pte_t;
 typedef uint64 *pagetable_t; // 512 PTEs
+
+//获取当前函数的fp
+static inline uint64
+r_fp(){
+  uint64 x;
+  //将s0寄存器的值写给x，"=r"表示写的操作
+  asm volatile("mv %0, s0":"=r"(x));
+  return x;
+}
