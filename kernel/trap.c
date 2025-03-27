@@ -45,6 +45,7 @@ usertrap(void)
   // send interrupts and exceptions to kerneltrap(),
   // since we're now in the kernel.
   //设置stvec寄存器设为指向处理内核陷阱的入口
+  //为什么要将陷阱处理入口设置位内核的，因为当我们从用户态陷入到内核后，在内核中又发生了中断，那么此时就应该交给内核的处理中断程序执行
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
@@ -74,9 +75,11 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){//是否是外部中断或者软件中断，调用共devintr处理
     // ok
   } else {
+    //scause寄存器表示陷阱原因
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+    //r_sepc记录了触发异常的指令地址,r_stval存储的是异常相关的信息
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    p->killed = 1;
+    p->killed = 1;  //终止进程
   }
 
   if(p->killed)
@@ -114,9 +117,13 @@ usertrapret(void)
 
   // set up trapframe values that uservec will need when
   // the process next re-enters the kernel.
+  //设置陷阱帧(trapframe)中的值，以供进程下次进入内核时uservec使用
+  //保存当前内核页表的物理地址,确保可以正确加载内核页表
   p->trapframe->kernel_satp = r_satp();         // kernel page table
+  //设置进程内核栈的指针，内核栈用于在内核态执行时对函数的调用进行保存
   p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
   p->trapframe->kernel_trap = (uint64)usertrap;
+  //保存CPU的核心ID，在多线程中确保进程在正确的CPU上运行
   p->trapframe->kernel_hartid = r_tp();         // hartid for cpuid()
 
   // set up the registers that trampoline.S's sret will use
@@ -124,20 +131,26 @@ usertrapret(void)
   
   // set S Previous Privilege mode to User.
   unsigned long x = r_sstatus();
+  //SPP位表示之前处于什么级别，但这里显示的将SPP设为0，在sret中会查看SPP发现是0返回用户，1返回内核
   x &= ~SSTATUS_SPP; // clear SPP to 0 for user mode
+  //在这里就恢复了上文中禁用的中断了，这里设置SPIE为1表示返回用户态后恢复中断的使用
   x |= SSTATUS_SPIE; // enable interrupts in user mode
   w_sstatus(x);
 
   // set S Exception Program Counter to the saved user pc.
+  //p->trapframe->epc += 4;这是在usertrap中执行的代码用于设置sret后应该返回到的发生中断的下一条语句的位置，这里对sepc进行设置确保可以返回到正确的执行位置
   w_sepc(p->trapframe->epc);
 
   // tell trampoline.S the user page table to switch to.
+  //这里设置satp为用户页表的位置，在后续汇编中会将他加载到实际的satp寄存器中
   uint64 satp = MAKE_SATP(p->pagetable);
 
   // jump to trampoline.S at the top of memory, which 
   // switches to the user page table, restores user registers,
   // and switches to user mode with sret.
+  //得出用户地址空间中userret的虚拟地址
   uint64 fn = TRAMPOLINE + (userret - trampoline);
+  //执行 fn(TRAPFRAME, satp) 会跳转到用户地址空间的 userret 代码，开始执行返回用户模式的流程。
   ((void (*)(uint64,uint64))fn)(TRAPFRAME, satp);
 }
 

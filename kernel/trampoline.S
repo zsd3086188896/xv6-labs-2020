@@ -67,6 +67,7 @@ uservec:
         sd t0, 112(a0)
 
         # restore kernel stack pointer from p->trapframe->kernel_sp
+        # 恢复内核栈指针
         ld sp, 8(a0)
 
         # make tp hold the current hartid, from p->trapframe->kernel_hartid
