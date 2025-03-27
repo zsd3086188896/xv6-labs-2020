@@ -63,6 +63,7 @@ uservec:
         sd t6, 280(a0)
 
 	# save the user a0 in p->trapframe->a0
+        # sscratch现在是a0寄存器的值，将他保存到陷阱帧的偏移112位的位置
         csrr t0, sscratch
         sd t0, 112(a0)
 
@@ -106,7 +107,8 @@ userret:
 
         # put the saved user a0 in sscratch, so we
         # can swap it with our a0 (TRAPFRAME) in the last step.
-        # 将t0设置为用户页表的地址，并交给sscratch
+        # 从a0偏移112位的位置找到原先保存在陷阱帧中的a0寄存器的值，现在交给sscratch寄存器
+        # 现在的a0寄存器保存的是系统调用的返回值
         ld t0, 112(a0)
         csrw sscratch, t0
 
@@ -144,7 +146,7 @@ userret:
         ld t6, 280(a0)
 
 	# restore user a0, and save TRAPFRAME in sscratch
-        # 恢复a0原来的值
+        # 现在a0是系统调用的返回值
         csrrw a0, sscratch, a0
         
         # return to user mode and user pc.

@@ -73,12 +73,12 @@ usertrap(void)
 
     syscall();
   } else if((which_dev = devintr()) != 0){//是否是外部中断或者软件中断，调用共devintr处理
-    // ok
+    // ok 
   } else {
     //scause寄存器表示陷阱原因
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     //r_sepc记录了触发异常的指令地址,r_stval存储的是异常相关的信息
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+    printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;  //终止进程
   }
 
@@ -160,27 +160,31 @@ void
 kerneltrap()
 {
   int which_dev = 0;
+  //提前保存可能在后文发生调度产生改变的值
   uint64 sepc = r_sepc();
   uint64 sstatus = r_sstatus();
   uint64 scause = r_scause();
-  
-  if((sstatus & SSTATUS_SPP) == 0)
+  //判断中断类型：1、设备中断如时间片中断2、异常如缺页异常
+  if((sstatus & SSTATUS_SPP) == 0)//检查特权级
     panic("kerneltrap: not from supervisor mode");
-  if(intr_get() != 0)
+  if(intr_get() != 0)//判断中断是否打开
     panic("kerneltrap: interrupts enabled");
 
-  if((which_dev = devintr()) == 0){
-    printf("scause %p\n", scause);
+  if((which_dev = devintr()) == 0){//用devintr处理设备中断
+    printf("scause %p\n", scause);//对于异常调用panic停止执行
     printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
     panic("kerneltrap");
   }
 
   // give up the CPU if this is a timer interrupt.
+  //如果时间片到了并且一个进程的内核线程正在运行会让出CPU调用yield给其他线程一个机会
+  //是否需要发生调度
   if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
     yield();
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
+  //将可能因为调度发生改变的值重新恢复
   w_sepc(sepc);
   w_sstatus(sstatus);
 }
