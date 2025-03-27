@@ -31,6 +31,7 @@ fetchstr(uint64 addr, char *buf, int max)
   return strlen(buf);
 }
 
+//提取第n个参数，分别存储在a0到a5寄存器中
 static uint64
 argraw(int n)
 {
@@ -54,6 +55,7 @@ argraw(int n)
 }
 
 // Fetch the nth 32-bit system call argument.
+//读取整数参数
 int
 argint(int n, int *ip)
 {
@@ -64,6 +66,7 @@ argint(int n, int *ip)
 // Retrieve an argument as a pointer.
 // Doesn't check for legality, since
 // copyin/copyout will do that.
+//读取地址参数
 int
 argaddr(int n, uint64 *ip)
 {
@@ -74,6 +77,7 @@ argaddr(int n, uint64 *ip)
 // Fetch the nth word-sized system call argument as a null-terminated string.
 // Copies into buf, at most max.
 // Returns string length if OK (including nul), -1 if error.
+//读取字符串参数
 int
 argstr(int n, char *buf, int max)
 {

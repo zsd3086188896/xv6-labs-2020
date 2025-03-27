@@ -87,8 +87,16 @@ usertrap(void)
 
   // give up the CPU if this is a timer interrupt.
   //时间片到了就让出CPU
-  if(which_dev == 2)
+  if(which_dev == 2){
+    if(p->alarm_interval!=0&&--p->alarm_ticks<=0&&p->alarm_goingoff==0){
+      p->alarm_ticks = p->alarm_interval;//重置时钟倒计时
+      *p->alarm_trapframe = *p->trapframe;//保存当前进程的陷阱帧
+      p->trapframe->epc = (uint64)p->alarm_handler;//跳转到时钟回调函数
+      p->alarm_goingoff = 1;  //标记当前已有时钟正在运行
+    }
     yield();
+  }
+   
 
     //调用该函数用于恢复上下文,设置stevc
   usertrapret();
@@ -253,3 +261,19 @@ devintr()
   }
 }
 
+//设置进程中的时钟相关属性
+int sigalarm(int ticks, void(*handler)()){
+  struct proc*p = myproc();
+  p->alarm_interval = ticks;//时钟周期
+  p->alarm_handler = handler;//时钟回调函数
+  p->alarm_ticks = ticks; //距离下一次时钟响起的ticks的数
+  return 0;
+}
+
+//将进程恢复到alarm中断前的状态
+int sigreturn(){
+  struct proc* p = myproc();
+  *p->trapframe = *p->alarm_trapframe;
+  p->alarm_goingoff = 0;
+  return 0;
+}

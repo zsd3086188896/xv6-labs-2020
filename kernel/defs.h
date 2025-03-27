@@ -146,6 +146,8 @@ void            trapinit(void);
 void            trapinithart(void);
 extern struct spinlock tickslock;
 void            usertrapret(void);
+int             sigalarm(int, void(*)(void));   //sigalarm函数声明
+int             sigreturn(void);                //sigreturn函数声明
 
 // uart.c
 void            uartinit(void);
