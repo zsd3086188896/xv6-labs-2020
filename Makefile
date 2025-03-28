@@ -151,7 +151,9 @@ UPROGS=\
 	$U/_zombie\
 	$U/_sleep\
 	$U/_pingpong\
-
+	$U/_sigalarm\
+	$U/_sigreturn\
+	
 ifeq ($(LAB),syscall)
 UPROGS += \
 	$U/_trace\

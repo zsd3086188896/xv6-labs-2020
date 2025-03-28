@@ -88,6 +88,7 @@ usertrap(void)
   // give up the CPU if this is a timer interrupt.
   //时间片到了就让出CPU
   if(which_dev == 2){
+    //--p->alarm_ticks<=0判断时钟周期数，每次减少剩余周期数
     if(p->alarm_interval!=0&&--p->alarm_ticks<=0&&p->alarm_goingoff==0){
       p->alarm_ticks = p->alarm_interval;//重置时钟倒计时
       *p->alarm_trapframe = *p->trapframe;//保存当前进程的陷阱帧

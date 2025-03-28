@@ -23,6 +23,9 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+//时钟相关系统调用函数
+int sigalarm(void);
+int sigreturn(void);
 
 // ulib.c
 int stat(const char*, struct stat*);
