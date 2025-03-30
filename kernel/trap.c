@@ -72,8 +72,20 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){//是否是外部中断或者软件中断，调用共devintr处理
-    // ok 
+  } else if((which_dev = devintr()) != 0){
+    // ok
+  }else if(r_scause()==13||r_scause()==15){
+      uint64 falutadd = r_stval();//取出发生错误的地址
+      char* m = 0;//分配物理地址
+      //判断当前发生错误的地址是不是在栈空间的上面
+      if(PGROUNDUP(p->trapframe->sp)-1<falutadd&&falutadd<p->sz&&(m = kalloc())!=0){
+        memset(m, 0, PGSIZE);
+        if(mappages(p->pagetable, PGROUNDDOWN(falutadd), PGSIZE, (uint64)m, PTE_W|PTE_X|PTE_R|PTE_U)!=0){
+          printf("lazy alloc: failed to map page\n");
+          kfree(m);
+          p->killed = 1;
+        }
+      }
   } else {
     //scause寄存器表示陷阱原因
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);

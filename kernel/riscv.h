@@ -184,6 +184,8 @@ w_mtvec(uint64 x)
 // use riscv's sv39 page table scheme.
 #define SATP_SV39 (8L << 60)
 
+//SATP_SV39使用39位虚拟空间地址的三级页表
+//(uint64)pagetable) >> 12右移12位得到PPN物理页号，与SV39结合得到最终的SATP值
 #define MAKE_SATP(pagetable) (SATP_SV39 | (((uint64)pagetable) >> 12))
 
 // supervisor address translation and protection;
@@ -314,6 +316,7 @@ r_ra()
   return x;
 }
 
+//刷新TLB，确保切换进程后，不会使用到旧的TLB
 // flush the TLB.
 static inline void
 sfence_vma()
@@ -326,25 +329,37 @@ sfence_vma()
 #define PGSIZE 4096 // bytes per page
 #define PGSHIFT 12  // bits of offset within a page
 
-#define PGROUNDUP(sz)  (((sz)+PGSIZE-1) & ~(PGSIZE-1))
-#define PGROUNDDOWN(a) (((a)) & ~(PGSIZE-1))
+//将任意大小的sz向上对齐到最近的页面边界
+//(sz)+PGSIZE-1调整至一个页面的大小
+//~(PGSIZE-1)屏蔽低12位，高27位是index索引的位置索引到页，低12位是offset
+//得到的要是页面大小的整数倍
+#define PGROUNDUP(sz)  (((sz)+PGSIZE-1) & ~(PGSIZE-1))  //向上取整
+//向下取整，保证页面对齐
+#define PGROUNDDOWN(a) (((a)) & ~(PGSIZE-1))    //向下取整
 
-#define PTE_V (1L << 0) // valid
-#define PTE_R (1L << 1)
-#define PTE_W (1L << 2)
-#define PTE_X (1L << 3)
-#define PTE_U (1L << 4) // 1 -> user can access
+//设置位
+#define PTE_V (1L << 0) // valid，1位有对应的物理页，0触发缺页异常
+#define PTE_R (1L << 1) //读
+#define PTE_W (1L << 2) //写
+#define PTE_X (1L << 3) //执行
+#define PTE_U (1L << 4) // 1 -> user can access用户模式访问权限，0表示只允许内核页访问
 
+//将物理地址转换位页表项，与PTE2PA相反
 // shift a physical address to the right place for a PTE.
 #define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)
-
+//根据页表项, 将虚拟地址转换为物理地址
+//(pte) >> 10,为什么要右移10位，因为整个PTE由10位的标志位，44位的PPN也就是物理页号,12位offset
+//因此要右移10位对齐到PPN之后再左移12位，因为物理地址是PPN乘以页的大小2^12的到物理地址
 #define PTE2PA(pte) (((pte) >> 10) << 12)
-
+//取出十位的标志位
 #define PTE_FLAGS(pte) ((pte) & 0x3FF)
-
+ 
 // extract the three 9-bit page table indices from a virtual address.
+//原本27位的页表被划分成三个9位的页目录，提取低九位的掩码
 #define PXMASK          0x1FF // 9 bits
+//确定所在的层级
 #define PXSHIFT(level)  (PGSHIFT+(9*(level)))
+//提取页表索引
 #define PX(level, va) ((((uint64) (va)) >> PXSHIFT(level)) & PXMASK)
 
 // one beyond the highest possible virtual address.
@@ -354,13 +369,4 @@ sfence_vma()
 #define MAXVA (1L << (9 + 9 + 9 + 12 - 1))
 
 typedef uint64 pte_t;
-typedef uint64 *pagetable_t; // 512 PTEs
-
-//获取当前函数的fp
-static inline uint64
-r_fp(){
-  uint64 x;
-  //将s0寄存器的值写给x，"=r"表示写的操作
-  asm volatile("mv %0, s0":"=r"(x));
-  return x;
-}
+typedef uint64 *pagetable_t; // 512 PTEs,指向根页表的指针

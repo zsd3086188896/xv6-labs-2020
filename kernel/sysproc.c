@@ -46,9 +46,19 @@ sys_sbrk(void)
 
   if(argint(0, &n) < 0)
     return -1;
+    //只修改进程的大小而不真正分配内存
   addr = myproc()->sz;
-  if(growproc(n) < 0)
+  //修改为lazy分配，只会增加大小但是不会分配新内存，返回旧的大小
+  // if(growproc(n) < 0)
+  //   return -1;
+  struct proc*p = myproc();
+  if(n>0){//如果是扩大内存就只增加大小
+    p->sz+=n;
+  }else if(p->sz+n>0){//如果是缩小内存，因为n为负数检查是否小于0，相加结果如果小于0说明要缩小的内存过大，从而报错
+    p->sz = uvmdealloc(p->pagetable, p->sz, p->sz+n);
+  }else
     return -1;
+  //返回旧的内存大小
   return addr;
 }
 

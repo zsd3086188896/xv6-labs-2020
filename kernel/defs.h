@@ -159,8 +159,8 @@ int             uartgetc(void);
 // vm.c
 void            kvminit(void);
 void            kvminithart(void);
-uint64          kvmpa(uint64);
-void            kvmmap(uint64, uint64, uint64, int);
+uint64          kvmpa(pagetable_t, uint64);         //新加参数
+void            kvmmap(pagetable_t, uint64, uint64, uint64, int);//新加参数
 int             mappages(pagetable_t, uint64, uint64, uint64, int);
 pagetable_t     uvmcreate(void);
 void            uvminit(pagetable_t, uchar *, uint);
@@ -174,7 +174,12 @@ uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
-
+int             vmprint(pagetable_t pagetable);
+pagetable_t     kvminit_ker();      //创建页表并初始化
+void            kvm_map_pagetable(pagetable_t); //初始化页表映射函数
+void            kvm_free_kernelpgtbl(pagetable_t);//递归释放内核页表
+int             kvmcopymappings(pagetable_t , pagetable_t , uint64 , uint64 );//用户页表拷贝到内核页表
+uint64          kvmdealloc(pagetable_t , uint64 , uint64 );//缩减内存大小
 // plic.c
 void            plicinit(void);
 void            plicinithart(void);
