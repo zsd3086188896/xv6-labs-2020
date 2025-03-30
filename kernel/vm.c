@@ -315,10 +315,12 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     //没有对应的物理内存映射
     if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
+      //panic("uvmunmap: walk");    //遇到不存在的页表跳过
+      continue;
     //有效位为0
     if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+      //panic("uvmunmap: not mapped");
+      continue;
     //PTE_FLAGS是屏蔽物理页号的位置，只剩下标志位
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
