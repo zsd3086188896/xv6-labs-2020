@@ -67,25 +67,18 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  }else if(r_scause()==13||r_scause()==15){
-      uint64 falutadd = r_stval();//取出发生错误的地址
-      char* m = 0;//分配物理地址
-      //判断当前发生错误的地址是不是在栈空间的上面
-      if(PGROUNDUP(p->trapframe->sp)-1<falutadd&&falutadd<p->sz&&(m = kalloc())!=0){
-        memset(m, 0, PGSIZE);
-        if(mappages(p->pagetable, PGROUNDDOWN(falutadd), PGSIZE, (uint64)m, PTE_W|PTE_X|PTE_R|PTE_U)!=0){
-          printf("lazy alloc: failed to map page\n");
-          kfree(m);
-          p->killed = 1;
-        }
+  }else{
+      uint64 va = r_stval();//发生错误的地址
+      if((r_scause()==13||r_scause()==15)&&uvmshouldalloc(va)){//发生页面错误并且发生错误的位置在正确的地方
+        uvmlazyallocate(va);
+      }else{    //如果不是页面错误或者在非惰性分配地址上发生缺页
+        printf("usertrap()：unexpected scause %p oud=%d\n", r_scause(), p->pid);
+        printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+        p->killed = 1;
       }
-  } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    p->killed = 1;
-  }
+  } 
 
-  if(p->killed)
+  if(p->killed) 
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.

@@ -507,9 +507,11 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+      //panic("uvmcopy: pte should exist");
+      continue;//惰性分配导致某些PTE未分配则跳过
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      //panic("uvmcopy: page not present");
+      continue;
     pa = PTE2PA(*pte);//将父进程的对应物理地址的PTE赋给pa
     flags = PTE_FLAGS(*pte);//取出PTE的十位的标志位
     if((mem = kalloc()) == 0)//没有空闲的物理内存
@@ -551,6 +553,9 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)//将从内�
 {
   uint64 n, va0, pa0;
 
+  if(uvmshouldallocate(dstva)){//如果遇到没有分配的地址空间马上进行分配
+    uvmlazyallocate(dstva);
+  }
   //用循环解决了跨页的情况
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);//计算当前页的起始虚拟地址
@@ -580,24 +585,27 @@ extern int copyinstr_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
-  // uint64 n, va0, pa0;
+  uint64 n, va0, pa0;
 
-  // while(len > 0){
-  //   va0 = PGROUNDDOWN(srcva);
-  //   pa0 = walkaddr(pagetable, va0);
-  //   if(pa0 == 0)
-  //     return -1;
-  //   n = PGSIZE - (srcva - va0);//计算需要赋值的字节数
-  //   if(n > len)
-  //     n = len;
-  //   memmove(dst, (void *)(pa0 + (srcva - va0)), n);
+  if(uvmshouldallocate((uint64)dst)){//如果遇到没有分配的地址空间马上进行分配
+    uvmlazyallocate((uint64)dst);
+  }
+  while(len > 0){
+    va0 = PGROUNDDOWN(srcva);
+    pa0 = walkaddr(pagetable, va0);
+    if(pa0 == 0)
+      return -1;
+    n = PGSIZE - (srcva - va0);//计算需要赋值的字节数
+    if(n > len)
+      n = len;
+    memmove(dst, (void *)(pa0 + (srcva - va0)), n);
 
-  //   len -= n;
-  //   dst += n;
-  //   srcva = va0 + PGSIZE;//下一轮循环处理下一个页面
-  // }
-  // return 0;
-  return copyin_new(pagetable, dst, srcva, len);
+    len -= n;
+    dst += n;
+    srcva = va0 + PGSIZE;//下一轮循环处理下一个页面
+  }
+  return 0;
+  //return copyin_new(pagetable, dst, srcva, len);
 }
 
 // Copy a null-terminated string from user to kernel.
@@ -658,4 +666,31 @@ void kvm_free_kernelpgtbl(pagetable_t pgtbl){
     }
   }
   kfree((void*)pgtbl);
+}
+
+#include"spinlock.h"
+#include"proc.h"
+//检查当前分配的虚拟地址是否还没有实际分配
+int uvmshouldallocate(uint64 va){
+  pte_t* pte;
+  struct proc*p = myproc();
+  return va<p->sz     //确保地址在进程空间中
+        &&PGROUNDDOWN(va)!=r_sp() //确保地址不在栈的保护区域
+        &&(((pte = walk(p->pagetable, va, 0))==0)||((*pte & PTE_V)==0));  //确保真的没有进行分配
+}
+
+//给虚拟地址分配和映射物理内存
+void uvmlazyallocate(uint64 va){
+  struct proc*p = myproc();
+  char *pa = kalloc();
+  if(pa==0){
+    printf("lazy alloc：out of memory\n");
+    p->killed = 1;
+  }else{
+    if(mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)pa, PTE_W|PTE_X|PTE_R|PTE_U)!=0){
+      printf("lazy alloc: failed to map page\n");
+          kfree(pa);
+          p->killed = 1;
+    }
+  }
 }
