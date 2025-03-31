@@ -311,22 +311,29 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
-
+  //char *mem;
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+
+    if(*pte & PTE_W){//如果当前页是可写的则去除可写的特权，并且标志当前页位COW页，如果本身就是只读的则不用添加
+      *pte = (*pte & ~PTE_W | PTE_COW);
+    } 
+    flags = PTE_FLAGS(*pte);    //获取当前父进程的标志位
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags)!=0){
       goto err;
     }
+    addpage((void*)pa);//物理页引用数加1
+    // if((mem = kalloc()) == 0)
+    //   goto err;
+    // memmove(mem, (char*)pa, PGSIZE);
+    // if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
+    //   //kfree(mem);
+    //   goto err;
+    // }
   }
   return 0;
 
@@ -357,6 +364,8 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   uint64 n, va0, pa0;
 
   while(len > 0){
+    if(uvmcheckcowpage(dstva))//检查每一个页是否是COW页
+      uvmcowcopy(dstva);//是的话就执行复制操作
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
@@ -440,3 +449,32 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+#include "proc.h"
+//检查这个地址是否在COW页中
+int uvmcheckcowpage(uint64 va){
+  pte_t* pte;
+  struct proc* p = myproc();
+
+  return va < p->sz
+      && ((pte = walk(p->pagetable, va, 0))!=0) //有映射
+      && (*pte & PTE_V) //地址有效
+      && (*pte & PTE_COW);//地址有效并且是COW页
+}
+//实现写时复制
+int uvmcowcopy(uint64 va){
+  pte_t* pte;
+  struct proc*p = myproc();
+  if((pte = walk(p->pagetable, va, 0))==0)//获取当前的虚拟地址的页表项
+    panic("uvmcowcopy：walk");
+  uint64 pa = PTE2PA(*pte);//获取映射的物理地址
+  uint64 new = (uint64)kcopy_n_deref((void*)pa);//获取新分配的物理页，如果当前物理页的计数是1，则不进行分配返回原来的
+  if(new==0)
+    return -1;
+  uint64 flags = (PTE_FALGS(*pte)|PTE_W)&~PTE_COW;//获取当前的权限，并且修改权限为可写，清除COW权限
+  //清除旧的映射
+  uvmunmap(p->pagetable, PGROUNDDOWN(va), 1, 0);
+  if(mappages(p->pagetable, va, 1, new, flags)==-1)
+    panic("uvmcowcopy：mappages");
+}
+
