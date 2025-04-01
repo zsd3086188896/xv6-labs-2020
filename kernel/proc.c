@@ -453,6 +453,13 @@ wait(uint64 addr)
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
+// 每个 CPU 在完成自身初始化后调用 scheduler()。
+// 调度器永远不会返回，而是循环执行以下操作：
+// - 选择一个待运行的进程。
+// - 通过 swtch 切换到该进程并开始执行。
+// - 最终该进程会通过 swtch 将控制权交还给调度器。
+
+//每个线程都要运行scheduler函数
 void
 scheduler(void)
 {
@@ -462,21 +469,25 @@ scheduler(void)
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
+    //开启中断
     intr_on();
     
     int found = 0;
+    //从进程数组中第一个开始循环
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
-      if(p->state == RUNNABLE) {
+      if(p->state == RUNNABLE) {//选中进程
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
+        //切换到选中的进程。该进程需要自行释放其持有的锁，并在跳转回调度器之前重新获取该锁。
         p->state = RUNNING;
         c->proc = p;
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
+        //表示当前CPU不再运行任何进程
         c->proc = 0;
 
         found = 1;
@@ -497,23 +508,37 @@ scheduler(void)
 // be proc->intena and proc->noff, but that would
 // break in the few places where a lock is held but
 // there's no process.
+//切换到调度器。调用时必须仅持有 p->lock，并且已修改 proc->state。
+// 保存并恢复 intena（中断启用状态），
+// 因为 intena 是内核线程的属性而非 CPU 的属性。
+// 理论上它应该属于 proc->intena 和 proc->noff，
+// 但这样会在少数无进程却持有锁的情况下引发问题。​
 void
 sched(void)
 {
   int intena;
   struct proc *p = myproc();
 
+  //检查是否持有锁
   if(!holding(&p->lock))
     panic("sched p->lock");
+  //acquire时会关闭中断，并且push_off加1，相反减1，
+  //说明现在时持有锁的状态
+  //>1说明还有其他的锁没有释放，=0说明没有持有锁
   if(mycpu()->noff != 1)
     panic("sched locks");
+  //检查是否对状态进行修改
   if(p->state == RUNNING)
     panic("sched running");
+  //检查中断是否禁用
   if(intr_get())
     panic("sched interruptible");
 
+  //保存当前中断状态,只有首次禁用中断intena才会更新，后续嵌套不会修改
   intena = mycpu()->intena;
+  //保存上下文到p->context,old 和 new保存old 恢复new
   swtch(&p->context, &mycpu()->context);
+  //恢复中断状态
   mycpu()->intena = intena;
 }
 
@@ -522,6 +547,7 @@ void
 yield(void)
 {
   struct proc *p = myproc();
+  //将当前进程状态改为可运行
   acquire(&p->lock);
   p->state = RUNNABLE;
   sched();
