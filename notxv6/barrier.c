@@ -10,6 +10,7 @@ static int round = 0;
 struct barrier {
   pthread_mutex_t barrier_mutex;
   pthread_cond_t barrier_cond;
+  //统计当前到达屏障的线程数，当这个线程数等于总线程数释放
   int nthread;      // Number of threads that have reached this round of the barrier
   int round;     // Barrier round
 } bstate;
@@ -25,20 +26,17 @@ barrier_init(void)
 static void 
 barrier()
 {
-  // YOUR CODE HERE
-  //
-  // Block until all threads have called barrier() and
-  // then increment bstate.round.
-  //
-  pthread_mutex_lock(&bstate.barrier_mutex);
-  if (++bstate.nthread < nthread)
-    pthread_cond_wait(&bstate.barrier_cond, &bstate.barrier_mutex);
-  else {
-    bstate.nthread = 0;
-    bstate.round++;
-    pthread_cond_broadcast(&bstate.barrier_cond);
-  }
-  pthread_mutex_unlock(&bstate.barrier_mutex);
+    //在这里上锁防止有线程不会被唤醒
+    pthread_mutex_lock(&bstate.barrier_mutex);
+    bstate.nthread++;//当一个线程进入，线程数应该+1
+    if(bstate.nthread!=nthread){//当其中的线程没有达到总线程的数量，将当前进程睡眠
+        pthread_cond_wait(&bstate.barrier_cond, &bstate.barrier_mutex);
+    }else{
+        bstate.round++;//将轮数加1
+        bstate.nthread = 0;//并重置线程数
+        pthread_cond_broadcast(&bstate.barrier_cond);//唤醒全部线程
+    }
+    pthread_mutex_unlock(&bstate.barrier_mutex);
 }
 
 static void *
@@ -49,9 +47,9 @@ thread(void *xa)
   int i;
 
   for (i = 0; i < 20000; i++) {
-    int t = bstate.round;
+    int t = bstate.round;   //读取全局的屏障的当前轮次
     assert (i == t);
-    barrier();
+    barrier();              //等待所有线程到达此处
     usleep(random() % 100);
   }
 
