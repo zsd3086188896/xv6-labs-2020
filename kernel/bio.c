@@ -23,14 +23,20 @@
 #include "fs.h"
 #include "buf.h"
 
+#define NBUFMAP_BUCKET 13//哈希桶的个数
+#define BUFMAP_HASH(dev, blockno)((((dev)<<27)|(blockno))%NBUFMAP_BUCKET)//哈希函数
+
+
 struct {
-  struct spinlock lock;
+  //struct spinlock lock;
   struct buf buf[NBUF];
 
+  struct buf bufmap[NBUFMAP_BUCKET];  //哈希桶
+  struct spinlock bufmap_locks[NBUFMAP_BUCKET];//给每一个桶设定一个锁，只有当两个进程同时哈希到同一个桶的时候才会发生竞争
   // Linked list of all buffers, through prev/next.
   // Sorted by how recently the buffer was used.
   // head.next is most recent, head.prev is least.
-  struct buf head;
+  //struct buf head;
 } bcache;
 
 void
@@ -38,7 +44,10 @@ binit(void)
 {
   struct buf *b;
 
-  initlock(&bcache.lock, "bcache");
+  //对每一个桶的锁进行初始化
+  for(int i = 0;i<13;i++){
+    initlock(&bcache.bufmap_locks[i], "bcache");
+  }
 
   // Create linked list of buffers
   //创建双向链表
