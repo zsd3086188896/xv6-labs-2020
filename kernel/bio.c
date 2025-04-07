@@ -41,6 +41,7 @@ binit(void)
   initlock(&bcache.lock, "bcache");
 
   // Create linked list of buffers
+  //创建双向链表
   bcache.head.prev = &bcache.head;
   bcache.head.next = &bcache.head;
   for(b = bcache.buf; b < bcache.buf+NBUF; b++){
@@ -75,10 +76,11 @@ bget(uint dev, uint blockno)
   // Not cached.
   // Recycle the least recently used (LRU) unused buffer.
   for(b = bcache.head.prev; b != &bcache.head; b = b->prev){
+    //标识当前缓冲区是否使用
     if(b->refcnt == 0) {
       b->dev = dev;
       b->blockno = blockno;
-      b->valid = 0;
+      b->valid = 0;//标志将从磁盘进行读取数据
       b->refcnt = 1;
       release(&bcache.lock);
       acquiresleep(&b->lock);
@@ -89,12 +91,15 @@ bget(uint dev, uint blockno)
 }
 
 // Return a locked buf with the contents of the indicated block.
+//返回一个锁定缓冲区，其中包含指定块的内容。
 struct buf*
 bread(uint dev, uint blockno)
 {
   struct buf *b;
 
+  //获取缓冲区
   b = bget(dev, blockno);
+  //valid表示缓冲区是否包含块的副本，不包含会从磁盘读取
   if(!b->valid) {
     virtio_disk_rw(b, 0);
     b->valid = 1;
@@ -103,6 +108,7 @@ bread(uint dev, uint blockno)
 }
 
 // Write b's contents to disk.  Must be locked.
+//如果修改了缓冲区就必须在返回之前调用bwrite重新写入磁盘
 void
 bwrite(struct buf *b)
 {
