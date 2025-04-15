@@ -69,17 +69,17 @@ balloc(uint dev)
 
   bp = 0;
   for(b = 0; b < sb.size; b += BPB){
-    bp = bread(dev, BBLOCK(b, sb));
-    for(bi = 0; bi < BPB && b + bi < sb.size; bi++){
-      m = 1 << (bi % 8);
-      if((bp->data[bi/8] & m) == 0){  // Is block free?
-        bp->data[bi/8] |= m;  // Mark block in use.
-        log_write(bp);
-        brelse(bp);
-        bzero(dev, b + bi);
-        return b + bi;
+    bp = bread(dev, BBLOCK(b, sb));//计算块号b对应的位块图
+    for(bi = 0; bi < BPB && b + bi < sb.size; bi++) {
+      m = 1 << (bi % 8);              // 计算当前位的掩码
+      if((bp->data[bi/8] & m) == 0) { // 检查位是否为 0（空闲）
+          bp->data[bi/8] |= m;        // 标记为 1（已分配）
+          log_write(bp);              // 提交日志
+          brelse(bp);                 // 释放位图块缓冲区
+          bzero(dev, b + bi);         // 清空新分配的数据块
+          return b + bi;              // 返回块号
       }
-    }
+  }
     brelse(bp);
   }
   panic("balloc: out of blocks");
@@ -192,6 +192,7 @@ static struct inode* iget(uint dev, uint inum);
 // Allocate an inode on device dev.
 // Mark it as allocated by  giving it type type.
 // Returns an unlocked but allocated and referenced inode.
+//在设备 dev 上分配一个 inode，并通过设置其类型为 type 来标记它为已分配状态。返回一个未锁定但已分配且具有引用的 inode。​
 struct inode*
 ialloc(uint dev, short type)
 {
@@ -199,14 +200,16 @@ ialloc(uint dev, short type)
   struct buf *bp;
   struct dinode *dip;
 
+  //寻找空闲innode
   for(inum = 1; inum < sb.ninodes; inum++){
-    bp = bread(dev, IBLOCK(inum, sb));
-    dip = (struct dinode*)bp->data + inum%IPB;
+    bp = bread(dev, IBLOCK(inum, sb));  //读取其所在的磁盘块
+    dip = (struct dinode*)bp->data + inum%IPB;//通过计算块号，定位到具体位置
     if(dip->type == 0){  // a free inode
       memset(dip, 0, sizeof(*dip));
       dip->type = type;
-      log_write(bp);   // mark it allocated on the disk
+      log_write(bp);   // mark it allocated on the disk提交到日志中
       brelse(bp);
+      //加载到内存缓存
       return iget(dev, inum);
     }
     brelse(bp);
@@ -239,6 +242,9 @@ iupdate(struct inode *ip)
 // Find the inode with number inum on device dev
 // and return the in-memory copy. Does not lock
 // the inode and does not read it from disk.
+//查找设备 dev 上编号为 inum 的 inode，并返回其内存中的副本。此操作不会锁定 inode，也不会从磁盘读取它。​
+//只读状态下不会锁定innnode，只有在修改时会获取ilock
+//返回一个innode的指针
 static struct inode*
 iget(uint dev, uint inum)
 {
@@ -247,21 +253,26 @@ iget(uint dev, uint inum)
   acquire(&icache.lock);
 
   // Is the inode already cached?
+  //增加其引用计数
   empty = 0;
   for(ip = &icache.inode[0]; ip < &icache.inode[NINODE]; ip++){
+    //如果innode在缓存中，则返回缓存的innnode指针
     if(ip->ref > 0 && ip->dev == dev && ip->inum == inum){
       ip->ref++;
       release(&icache.lock);
       return ip;
     }
+    //不在缓存中，记录第一个空闲槽位
     if(empty == 0 && ip->ref == 0)    // Remember empty slot.
       empty = ip;
   }
 
   // Recycle an inode cache entry.
+  //无空闲槽位
   if(empty == 0)
     panic("iget: no inodes");
 
+  //对新分配的空闲槽位进行初始化
   ip = empty;
   ip->dev = dev;
   ip->inum = inum;
@@ -334,6 +345,7 @@ iput(struct inode *ip)
 {
   acquire(&icache.lock);
 
+  //只有当前调用iput的线程持有该innode
   if(ip->ref == 1 && ip->valid && ip->nlink == 0){
     // inode has no links and no other references: truncate and free.
 
@@ -343,17 +355,17 @@ iput(struct inode *ip)
 
     release(&icache.lock);
 
-    itrunc(ip);
-    ip->type = 0;
-    iupdate(ip);
-    ip->valid = 0;
+    itrunc(ip);//释放所有的数据块
+    ip->type = 0;//标记为空闲
+    iupdate(ip);//更新磁盘的innode
+    ip->valid = 0;//标记内存数据无效
 
     releasesleep(&ip->lock);
 
     acquire(&icache.lock);
   }
 
-  ip->ref--;
+  ip->ref--;//减少其引用计数
   release(&icache.lock);
 }
 
@@ -374,26 +386,63 @@ iunlockput(struct inode *ip)
 
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
+//返回 inode ip 中第 n 个块的磁盘地址。如果该块不存在，bmap 会分配一个。
 static uint
 bmap(struct inode *ip, uint bn)
 {
   uint addr, *a;
   struct buf *bp;
 
+  //如果要找的块使直接数据块，遍历直接数据块
   if(bn < NDIRECT){
+    //找不到这个块就进行分配
     if((addr = ip->addrs[bn]) == 0)
       ip->addrs[bn] = addr = balloc(ip->dev);
     return addr;
   }
+
+  //一级间接数据块
   bn -= NDIRECT;
 
   if(bn < NINDIRECT){
     // Load indirect block, allocating if necessary.
+    //分配间接块
     if((addr = ip->addrs[NDIRECT]) == 0)
       ip->addrs[NDIRECT] = addr = balloc(ip->dev);
+      //读取间接数据块
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;//获取其中的数据块地址数组
+    if((addr = a[bn]) == 0){//如果没有分配
+      a[bn] = addr = balloc(ip->dev);
+      log_write(bp);//写回日志
+    }
+    brelse(bp);
+    return addr;
+  }
+
+
+  //分层处理：先解析中间索引，再解析数据块​​
+  //减去一级索引数据块的大小得到二级的逻辑块号
+  bn -= NINDIRECT;
+  //找的使间接数据块，调整为间接块的索引
+  if(bn<NINDIRECT*NINDIRECT){
+    if((addr = ip->addrs[NDIRECT+1])==0){//如果二级间接数据块没有分配进行分配
+      ip->addrs[NDIRECT+1] = addr = balloc(ip->dev);//分配空间
+    }
     bp = bread(ip->dev, addr);
     a = (uint*)bp->data;
-    if((addr = a[bn]) == 0){
+    //bn/NINDIRECT得到的时当前逻辑号属于哪一个一级间接块(二级间接块的索引)，因为二级间接块是由256个一级间接块构成，每个一级间接块的大小就是256
+    if((addr = a[bn / NINDIRECT])==0){//bn处在二级索引的中间级的索引处
+      a[bn] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+
+    //计算在当前一级间接块中的偏移量
+    bn%=NINDIRECT;
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    if((addr = a[bn])==0){
       a[bn] = addr = balloc(ip->dev);
       log_write(bp);
     }
@@ -402,6 +451,9 @@ bmap(struct inode *ip, uint bn)
   }
 
   panic("bmap: out of range");
+
+
+  
 }
 
 // Truncate inode (discard contents).
@@ -413,6 +465,7 @@ itrunc(struct inode *ip)
   struct buf *bp;
   uint *a;
 
+  //释放直接数据块
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
       bfree(ip->dev, ip->addrs[i]);
@@ -420,6 +473,7 @@ itrunc(struct inode *ip)
     }
   }
 
+  //释放一级间接数据块
   if(ip->addrs[NDIRECT]){
     bp = bread(ip->dev, ip->addrs[NDIRECT]);
     a = (uint*)bp->data;
@@ -430,6 +484,28 @@ itrunc(struct inode *ip)
     brelse(bp);
     bfree(ip->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
+  }
+
+  //释放二级间接数据块
+  if(ip->addrs[NDIRECT+1]){
+    bp = bread(ip->dev, ip->addrs[NDIRECT+1]);
+    a = (uint*)bp->data;
+    for(int i = 0;i<MAXFILE;i++){
+      if(a[i]){
+        struct buf* bp2 = bread(ip->dev, a[i]);
+        uint* a2 = (uint*)bp2->data;
+        for(int j = 0;j<NINDIRECT;++j){
+          if(a2[j]){
+            bfree(ip->dev, a2[j]);
+          }
+        }
+        brelse(bp2);
+        bfree(ip->dev, a[i]);
+      }
+    }
+    brlese(bp);
+    bfree(ip->dev, ip->addrs[NDIRECT+1]);
+    ip->addrs[NDIRECT+1] = 0;
   }
 
   ip->size = 0;

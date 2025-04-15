@@ -22,20 +22,28 @@ struct superblock {
   uint bmapstart;    // Block number of first free map block
 };
 
+//魔数，标识磁盘设备是否时合法的系统，超级块的magic必须与这个匹配
 #define FSMAGIC 0x10203040
 
+//直接数据块的数量,存储在innode.addr[0-11]中
 #define NDIRECT 12
-#define NINDIRECT (BSIZE / sizeof(uint))
-#define MAXFILE (NDIRECT + NINDIRECT)
+//索引二级间接数据块
+#define NDIRECT2 13
+//inode 的 addrs[12] 指向一个间接块，该块存储 256 个数据块地址。
+#define NINDIRECT (BSIZE / sizeof(uint))//单个间接块能存储的块地址的数量
+
+//单个文件支持的 ​​最大数据块数量​​（直接 + 间接）。268kb
+#define MAXFILE (NDIRECT + NINDIRECT + NINDIRECT * NINDIRECT)//二级间接块能存储的最大块地址的数量
 
 // On-disk inode structure
 struct dinode {
   short type;           // File type
   short major;          // Major device number (T_DEVICE only)
   short minor;          // Minor device number (T_DEVICE only)
-  short nlink;          // Number of links to inode in file system
+  short nlink;          // 引用该innode的目录条目数量，减为0释放其占用的内存块
   uint size;            // Size of file (bytes)
-  uint addrs[NDIRECT+1];   // Data block addresses
+  //第13位为二级间接块
+  uint addrs[NDIRECT+2];   // Data block addresses
 };
 
 // Inodes per block.
