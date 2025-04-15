@@ -23,6 +23,7 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int symlink(char*, char*);//实现软链接的系统调用函数
 
 // ulib.c
 int stat(const char*, struct stat*);

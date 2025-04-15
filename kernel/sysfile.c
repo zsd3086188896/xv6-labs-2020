@@ -304,11 +304,36 @@ sys_open(void)
       return -1;
     }
   } else {
-    if((ip = namei(path)) == 0){
-      end_op();
-      return -1;
+    int symlink_depth = 0;//递归深度
+    while(1){
+      if((ip = namei(path))==0){//解析路径获取对应innode
+        end_op();
+        return -1;
+      }
+
+      ilock(ip);
+      if(ip->type==T_SYMLINK&&(omode & O_NOFOLLOW)==0){ //如果当前指向的仍然是软链接，则继续进行循环
+          if(++symlink_depth>10){   //链接深度超过10就跳出循环
+            iunlockput(ip);
+            end_op();
+            return -1;
+          }
+          //从软链接的 inode 数据块中读取 ​​目标路径字符串​​，存入 path 缓冲区
+          if(readi(ip, 0, (uint64)path, 0, MAXPATH)<0) {//读取链接的目标路径
+              iunlockput(ip);
+              end_op();
+              return -1;
+          }
+          iunlockput(ip);
+      }
+      else
+        break;
     }
-    ilock(ip);
+    // if((ip = namei(path)) == 0){
+    //   end_op();
+    //   return -1;
+    // }
+    // ilock(ip);
     if(ip->type == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
       end_op();
@@ -482,5 +507,33 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64
+sys_symlink(void){
+  struct inode* ip;
+  //target为目标路径，path为自身路径
+  char target[MAXPATH], path[MAXPATH];
+  //从系统调用中获取字符串
+  if(argstr(0, target, MAXPATH)<0||argstr(1, path, MAXPATH)<0)
+    return -1;
+
+  begin_op();
+
+  ip = create(path, T_SYMLINK, 0, 0);//创建新inode，类型为T_SYMLINK，指向path文件
+  if(ip==0){
+    end_op();
+    return -1;
+  }
+
+  if(writei(ip, 0, (uint64)target, 0, strlen(target))<0){//将target路径写入innode
+    end_op();
+    return -1;
+  }
+
+  iunlockput(ip);
+  end_op();
+
   return 0;
 }
