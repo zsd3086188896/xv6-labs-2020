@@ -484,3 +484,148 @@ sys_pipe(void)
   }
   return 0;
 }
+
+//mmap系统调用函数实现
+#include "memlayout.h"
+#include "fcntl.h"
+uint64
+sys_mmap(void){
+  uint64 addr, sz, offset;
+  int prot, flag, fd;
+  struct file* f;
+
+  //传入参数
+  if(argaddr(0, &addr)<0||argaddr(1, &sz)<0||argint(2, &flag)<0||argint(3, &prot)<0||argfd(4, &fd, &f)<0||argaddr(5, &offset)<0||sz==0){
+    return -1;
+  }
+  //以下情况直接返回，文件为不可读并且映射为可读
+  //源文件不可写，映射为可写并且设置了将修改文件写回源文件
+  if((!f->readable&&((prot&(PROT_READ))))||(!f->writable&&(prot&PROT_WRITE)&&!(flag&MAP_PRIVATE))){
+    return -1;
+  }
+
+  sz = PGROUNDUP(sz); //向上对齐到页的大小
+  struct proc* p = myproc();
+  struct zsd_vma* v = 0;
+  uint64 vaend = MMAPEND; //内存映射的结束地址
+  
+  //遍历查询未被使用过的vma,并且计算当前已经使用的vm的最低地址
+  for(int i = 0;i<NVMA;i++){
+    struct zsd_vma* vv = &p->vmas[i];
+    if(vv->valid==0){ //找到空闲内存进行保存
+      if(v==0){
+        v = &p->vmas[i];
+        v->valid = 1;
+      }
+    }else if(vv->vastart<vaend){
+      vaend = PGROUNDDOWN(vv->vastart);//更新可用区域的起始地址
+    }
+  }
+
+  if(v==0){
+    panic("mmap: no free vma");
+  }
+
+  v->vastart = vaend-sz;
+  v->sz = sz;
+  v->f = f;
+  v->prot = prot;
+  v->flags = flag;
+  v->offset = offset;
+
+  //增加文件引用数
+  filedup(v->f);
+
+  return v->vastart;
+}
+
+//通过虚拟地址
+struct zsd_vma* findvma(struct proc*p, uint64 va){
+  for(int i = 0;i<NVMA;i++){
+    struct zsd_vma* vv = &p->vmas[i];
+    //如果va的地址在vma的其中一个的范围内，则返回这个vma
+    if(vv->valid==1&&va>=vv->vastart&&va<vv->vastart+vv->sz){
+      return vv;
+    }
+  }
+  return 0;
+}
+
+//触发缺页中断后
+//采取惰性分配给虚拟地址分配物理页并建立映射
+int vmaalloc(uint64 va){
+  struct proc* p = myproc();
+  struct zsd_vma* v = findvma(p, va);//找到对应vma
+  if(v==0){
+    return 0;
+  }
+
+  //分配物理地址
+  void *pa = kalloc();
+  if(pa==0){
+    panic("vmaalloc:kalloc");
+  }
+  memset(pa, 0, PGSIZE);
+
+  //从磁盘读取文件
+  begin_op();
+  ilock(v->f->ip);
+  readi(v->f->ip, 0, (uint64)pa, v->offset+PGROUNDDOWN(va-v->vastart), PGSIZE);
+  iunlock(v->f->ip);
+  end_op();
+
+  //建立映射
+  if(mappages(p->pagetable, va, PGSIZE, (uint64)pa, PTE_R | PTE_W | PTE_U)<0){
+    panic("vmaalloc: mappages");
+  }
+
+  return -1;
+}
+
+uint64 sys_munmap(void){
+  uint64 addr, sz;
+  
+  //参数为要释放映射的地址和释放的范围大小
+  if(argaddr(0, &addr)<0||argaddr(1, &sz)<0||sz==0){
+    return -1;
+  }
+  
+  struct proc* p = myproc();
+  struct zsd_vma* v = findvma(p, addr);
+  if(v==0){
+    return -1;
+  }
+  //释放地方不能再中间打洞，不能只释放中间部分，要不就释放前面或后面，要不就全部释放
+  if(addr>v->vastart&&addr+sz<v->vastart+v->sz){
+    return -1;
+  }
+
+  uint64 addr_alinged = addr;
+
+  if(addr>v->vastart){//因为是从上往下扩展的，因此向上取整得到起始位置
+    addr_alinged = PGROUNDUP(addr);//对齐页面
+  }
+
+  int nunmap = sz-(addr_alinged-addr);  //计算释放的字节数
+  if(nunmap<0){
+    nunmap = 0;
+  }
+
+  vmaunmap(p->pagetable, addr_alinged, nunmap, v);//从addr_alinged开始释放nunmap个字节数
+
+  //如果解除映射的区域覆盖了VMA的起始部分，则需要调整VMA的起始地址`vastart`和文件偏移`offset`。
+  if(addr<=v->vastart&&addr+sz>v->vastart){
+    v->offset+=addr+sz-v->vastart;
+    v->vastart = addr+sz;
+  }
+  //减去已解除映射的部分
+  v->sz -= sz;
+
+  //如果解除后大小小于0就标记为无效,关闭文件
+  if(v->sz<=0){
+    fileclose(v->f);
+    v->valid = 0;
+  }
+
+  return 0;
+}

@@ -440,3 +440,30 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+
+#include "fcntl.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "proc.h"
+
+//nbytes是釋放的大小,va是起始位置
+void vmaunmap(pagetable_t pagetable, uint64 va, uint64 nbytes, struct zsd_vma* v){
+  uint64 a;
+  pte_t* pte;
+  
+  for(a = va;a<va+nbytes;a+=PGSIZE){
+    if((pte = walk(pagetable, a, 0))==0){
+      continue;
+    }
+
+    if(PTE_FLAGS(*pte)==PTE_V)
+      panic("sys_munmap: not a leaf");
+
+    if(*pte & PTE_V){
+      uint64 pa = PTE2PA(*pte);
+      if((*pte & PTE_D)&&(v->falgs & MAP_))
+    }
+  }
+}
