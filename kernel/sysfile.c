@@ -509,6 +509,16 @@ sys_mmap(void){
   struct zsd_vma* v = 0;
   uint64 vaend = MMAPEND; //内存映射的结束地址
   
+  //计算最小的可用地址
+  //遍历所有已使用的 VMA，找到最低的起始地址，确定可用区域的结束地址
+  for(int i = 0;i<NVMA;i++){
+    struct zsd_vma* vv = &p->vmas[i];
+    if(vv->valid&&vv->vastart<vaend){
+      vaend = PGROUNDDOWN(vv->vastart);
+    }
+  }
+
+  
   //遍历查询未被使用过的vma,并且计算当前已经使用的vm的最低地址
   for(int i = 0;i<NVMA;i++){
     struct zsd_vma* vv = &p->vmas[i];
