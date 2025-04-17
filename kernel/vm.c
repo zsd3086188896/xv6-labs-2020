@@ -462,8 +462,25 @@ void vmaunmap(pagetable_t pagetable, uint64 va, uint64 nbytes, struct zsd_vma* v
       panic("sys_munmap: not a leaf");
 
     if(*pte & PTE_V){
-      uint64 pa = PTE2PA(*pte);
-      if((*pte & PTE_D)&&(v->falgs & MAP_))
+      uint64 pa = PTE2PA(*pte); //虚拟地址转换成物理地址
+      if((*pte & PTE_D)&&(v->flags & MAP_SHARED)){//写回磁盘
+        begin_op();
+        ilock(v->f->ip);{
+          uint64 aoff = a - v->vastart; //计算偏移量
+          if(aoff<0){//第一个页不满足一个页
+            writei(v->f->ip, 0, pa+(-aoff), v->offset, PGSIZE+aoff);
+          }else if(aoff+PGSIZE>v->sz){//最后一个页不满足一个页
+            writei(v->f->ip, 0, pa, v->offset+aoff, v->sz-aoff);
+          }else{
+            writei(v->f->ip, 0, pa, v->offset+aoff, PGSIZE);
+          }
+          iunlock(v->f->ip);
+          end_op();
+        }
+        //kfree(v->f->ip);
+        kfree((void*)pa);
+        *pte = 0;
+      }
     }
   }
 }
