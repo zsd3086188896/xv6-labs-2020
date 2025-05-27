@@ -185,7 +185,7 @@ w_mtvec(uint64 x)
 #define SATP_SV39 (8L << 60)
 
 //SATP_SV39使用39位虚拟空间地址的三级页表
-//(uint64)pagetable) >> 12右移12位得到PPN物理页号，与SV39结合得到最终的SATP值
+//(uint64)pagetable) >> 12右移12位得到PPN ，与SV39结合得到最终的SATP值
 #define MAKE_SATP(pagetable) (SATP_SV39 | (((uint64)pagetable) >> 12))
 
 // supervisor address translation and protection;
@@ -330,8 +330,10 @@ sfence_vma()
 //(sz)+PGSIZE-1调整至一个页面的大小
 //~(PGSIZE-1)屏蔽低12位，高27位是index索引的位置索引到页，低12位是offset
 //得到的要是页面大小的整数倍
+//将地址对齐到 下一页的起始位置
 #define PGROUNDUP(sz)  (((sz)+PGSIZE-1) & ~(PGSIZE-1))  //向上取整
 //向下取整，保证页面对齐
+//将地址对齐到 当前页的起始位置
 #define PGROUNDDOWN(a) (((a)) & ~(PGSIZE-1))    //向下取整
 
 //设置位
@@ -355,6 +357,7 @@ sfence_vma()
 //原本27位的页表被划分成三个9位的页目录，提取低九位的掩码
 #define PXMASK          0x1FF // 9 bits
 //确定所在的层级
+//PGSHIFT是页内偏移占12位
 #define PXSHIFT(level)  (PGSHIFT+(9*(level)))
 //提取页表索引
 #define PX(level, va) ((((uint64) (va)) >> PXSHIFT(level)) & PXMASK)

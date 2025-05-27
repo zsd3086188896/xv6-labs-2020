@@ -166,6 +166,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 }
 
 //将用户页表拷贝到内核页表中
+//src用户，dst内核
 int 
 kvmcopymappings(pagetable_t src, pagetable_t dst, uint64 start, uint64 sz){
   pte_t* pte;
@@ -182,6 +183,7 @@ kvmcopymappings(pagetable_t src, pagetable_t dst, uint64 start, uint64 sz){
     if((*pte&PTE_V)==0){
       panic("kvmcopymappings:page not present");
     }
+    //用户态的页表的物理地址
     pa = PTE2PA(*pte);
 
     //将该页的权限设为非用户页，因为内核无法直接访问用户页
@@ -206,7 +208,9 @@ kvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz){
     return oldsz;
   }
   if(PGROUNDUP(newsz)<PGROUNDUP(oldsz)){
+    //需要缩减的页数
     int npags = (PGROUNDUP(oldsz)-PGROUNDUP(newsz))/PGSIZE;
+    //解除对应页数的映射
     uvmunmap(pagetable, PGROUNDUP(newsz), npags, 0);
   }
 
@@ -228,9 +232,9 @@ walkaddr(pagetable_t pagetable, uint64 va)
   pte = walk(pagetable, va, 0);
   if(pte == 0)
     return 0;
-  if((*pte & PTE_V) == 0)
+  if((*pte & PTE_V) == 0)// PTE 无效
     return 0;
-  if((*pte & PTE_U) == 0)
+  if((*pte & PTE_U) == 0)// 必须为用户可访问
     return 0;
   pa = PTE2PA(*pte);
   return pa;
@@ -275,6 +279,8 @@ kvmpa(pagetable_t pagetable, uint64 va)
 //为从虚拟地址 va 开始的虚拟地址创建页表项（PTEs），这些页表项指向从物理地址 pa 开始的物理地址。
 //va 和 size 可能不是页对齐的。成功时返回 0，如果 walk() 无法分配所需的页表页，则返回 -1
 //用于物理地址映射到虚拟地址
+//mappages(dst, i, PGSIZE, pa, flags)
+//将虚拟地址范围 [va, va+size) 映射到物理地址范围 [pa, pa+size)，并设置权限。
 int
 mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 {
@@ -286,7 +292,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
-    if(*pte & PTE_V)
+    if(*pte & PTE_V)//检查 PTE 是否已映射
       panic("remap");
       //物理地址转换为PTE并设置有效位
     *pte = PA2PTE(pa) | perm | PTE_V;
@@ -367,6 +373,9 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
 
 // Allocate PTEs and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
+//为进程分配页表项（PTEs）和物理内存，
+//使其内存大小从 oldsz 扩展到 newsz（无需页对齐）。成功时返回新的内存大小，
+//失败时返回 0。
 uint64
 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 {
@@ -402,6 +411,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 // need to be less than oldsz.  oldsz can be larger than the actual
 // process size.  Returns the new process size.
 //oldesz = a, newsz = oldesz
+//newsz是要恢复到原来的大小
 uint64
 uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 {
