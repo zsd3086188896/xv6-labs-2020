@@ -71,6 +71,7 @@ uservec:
         # 恢复内核栈指针
         ld sp, 8(a0)
 
+        #像tp寄存器中共写入当前运载在多核处理器的哪个核的编号上
         # make tp hold the current hartid, from p->trapframe->kernel_hartid
         ld tp, 32(a0)
 
@@ -80,7 +81,7 @@ uservec:
         ld t0, 16(a0)
 
         # restore kernel page table from p->trapframe->kernel_satp
-        # 读取内核页表，并写入satp寄存器
+        # 读取内核页表，并写入satp寄    存器
         ld t1, 0(a0)
         csrw satp, t1
         sfence.vma zero, zero
