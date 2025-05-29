@@ -121,3 +121,8 @@ uint64 sys_sigalarm(void){
 uint64 sys_sigreturn(void){
   return sigreturn();
 }
+
+uint64 sys_backtrace(void){
+  backtrace();
+  return 0;
+}

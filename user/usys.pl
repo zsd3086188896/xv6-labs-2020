@@ -39,3 +39,4 @@ entry("uptime");
 #添加时钟跳板函数
 entry("sigalarm");
 entry("sigreturn");
+entry("backtrace");

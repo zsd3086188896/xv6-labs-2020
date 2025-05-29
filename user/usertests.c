@@ -2617,6 +2617,24 @@ run(void f(char *), char *s) {
   }
 }
 
+void func3(){
+  backtrace();
+}
+void func2(){
+  func3();
+}
+void func1(){
+  func2();
+}
+//测试backtrace函数
+void
+backtracetest(char *s){
+  printf("backtrace test start\n");
+
+  func1();
+
+  printf("backtrac test OK\n");
+}
 int
 main(int argc, char *argv[])
 {
@@ -2694,6 +2712,7 @@ main(int argc, char *argv[])
     {iref, "iref"},
     {forktest, "forktest"},
     {bigdir, "bigdir"}, // slow
+    {backtracetest, "backtrace"},//backtrace函数
     { 0, 0},
   };
 
@@ -2743,4 +2762,6 @@ main(int argc, char *argv[])
     printf("ALL TESTS PASSED\n");
     exit(0);
   }
+
+
 }

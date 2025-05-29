@@ -153,7 +153,7 @@ UPROGS=\
 	$U/_pingpong\
 	$U/_sigalarm\
 	$U/_sigreturn\
-	
+
 ifeq ($(LAB),syscall)
 UPROGS += \
 	$U/_trace\
