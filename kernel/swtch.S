@@ -4,9 +4,10 @@ a# Context switch
 # 
 # Save current registers in old. Load from new.	
 
-
+#sd和ld的操作是相反的ld是从内存到寄存器中，而sd是寄存器到内存中
 .globl swtch
 swtch:
+        #加载
         sd ra, 0(a0)
         sd sp, 8(a0)
         sd s0, 16(a0)
@@ -21,7 +22,7 @@ swtch:
         sd s9, 88(a0)
         sd s10, 96(a0)
         sd s11, 104(a0)
-
+        #存储
         ld ra, 0(a1)
         ld sp, 8(a1)
         ld s0, 16(a1)

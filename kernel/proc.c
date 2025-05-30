@@ -530,7 +530,7 @@ sched(void)
   //检查是否对状态进行修改
   if(p->state == RUNNING)
     panic("sched running");
-  //检查中断是否禁用
+  //检查中断是否禁用  
   if(intr_get())
     panic("sched interruptible");
 
